@@ -224,6 +224,48 @@
     color: #9A8C7C;
     font-size: 13px;
   }
+
+  /* ====== 모임 설정: 멤버 ====== */
+  .member-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .member-chip {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    border-radius: 12px;
+  }
+  .member-owner-radio input { width: 18px; height: 18px; }
+  .member-emoji { font-size: 18px; }
+  .member-name { flex: 1; font-weight: 600; }
+  .member-remove-btn {
+    background: none; border: none; color: #6B5B4B; font-size: 14px;
+    min-width: 32px; min-height: 32px;
+  }
+  .member-add-form {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .emoji-picker {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 6px;
+  }
+  .emoji-btn {
+    background: #F5EEE4;
+    border: 2px solid transparent;
+    border-radius: 10px;
+    font-size: 20px;
+    min-height: 44px;
+  }
+  .emoji-btn.selected {
+    border-color: var(--color-primary);
+    background: #fff;
+  }
 </style>
 </head>
 <body>
@@ -569,6 +611,20 @@
           </div>
         </section>
 
+        <section class="card-section">
+          <h2>멤버 (${ev.members.length}/${CONFIG.MEMBER_MAX})</h2>
+          <div id="member-list" class="member-list">${ev.members.map(renderMemberChip).join('')}</div>
+          ${ev.members.length < CONFIG.MEMBER_MIN ? `<div class="field-hint">최소 ${CONFIG.MEMBER_MIN}명 이상 등록해주세요</div>` : ''}
+          <div id="member-error" class="field-error"></div>
+          <div class="member-add-form">
+            <input id="input-member-name" class="input" type="text" placeholder="이름" />
+            <div id="emoji-picker" class="emoji-picker">
+              ${CONFIG.MEMBER_EMOJIS.map((e, i) => `<button type="button" class="emoji-btn${i === 0 ? ' selected' : ''}" data-emoji="${e}">${e}</button>`).join('')}
+            </div>
+            <button type="button" id="btn-add-member" class="btn btn-primary">멤버 추가</button>
+          </div>
+        </section>
+
         <button type="button" id="btn-goto-items" class="btn btn-disabled">결제 입력으로 →</button>
       </main>
     `;
@@ -581,6 +637,62 @@
 
     document.getElementById('btn-goto-items').addEventListener('click', () => {
       showToast('Stage 2에서 열립니다');
+    });
+
+    let selectedEmoji = CONFIG.MEMBER_EMOJIS[0];
+
+    document.querySelectorAll('.emoji-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.emoji-btn').forEach(b => b.classList.remove('selected'));
+        btn.classList.add('selected');
+        selectedEmoji = btn.dataset.emoji;
+      });
+    });
+
+    document.getElementById('btn-add-member').addEventListener('click', () => {
+      const nameInput = document.getElementById('input-member-name');
+      const errorEl = document.getElementById('member-error');
+      errorEl.textContent = '';
+      try {
+        addMember(ev, nameInput.value, selectedEmoji);
+        store.save(ev);
+        renderEventSettings(params);
+      } catch (err) {
+        errorEl.textContent = err.message;
+      }
+    });
+
+    bindMemberListEvents(ev, params);
+  }
+
+  function renderMemberChip(m) {
+    return `
+      <div class="member-chip" style="background:${m.color}">
+        <label class="member-owner-radio">
+          <input type="radio" name="owner" value="${m.id}" ${m.isOwner ? 'checked' : ''} />
+        </label>
+        <span class="member-emoji">${m.emoji}</span>
+        <span class="member-name">${escapeHtml(m.name)}</span>
+        ${m.isOwner ? renderBadge('총무', 'primary') : ''}
+        <button type="button" class="member-remove-btn" data-id="${m.id}">✕</button>
+      </div>
+    `;
+  }
+
+  function bindMemberListEvents(ev, params) {
+    document.querySelectorAll('input[name="owner"]').forEach(radio => {
+      radio.addEventListener('change', () => {
+        setOwner(ev, radio.value);
+        store.save(ev);
+        renderEventSettings(params);
+      });
+    });
+    document.querySelectorAll('.member-remove-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        removeMember(ev, btn.dataset.id);
+        store.save(ev);
+        renderEventSettings(params);
+      });
     });
   }
 
