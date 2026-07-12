@@ -185,6 +185,45 @@
     box-shadow: 0 4px 12px rgba(0,0,0,0.15);
     min-height: 44px;
   }
+
+  /* ====== 모임 설정: 폼 ====== */
+  .btn-back {
+    background: none; border: none; font-size: 20px;
+    min-width: 44px; min-height: 44px;
+  }
+  .save-indicator {
+    font-size: 13px;
+    color: #4CAF50;
+    min-width: 64px;
+    text-align: right;
+  }
+  .field-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: #6B5B4B;
+  }
+  .input {
+    border: 1px solid #E0D6CA;
+    border-radius: 10px;
+    padding: 10px 12px;
+    font-size: 15px;
+    min-height: 44px;
+    width: 100%;
+  }
+  .account-fields {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .field-error {
+    color: #E74C3C;
+    font-size: 13px;
+    min-height: 18px;
+  }
+  .field-hint {
+    color: #9A8C7C;
+    font-size: 13px;
+  }
 </style>
 </head>
 <body>
@@ -502,8 +541,69 @@
     }
   }
 
+  // ====== 화면: 모임 설정 ======
+  let saveDebounceTimer = null;
+
+  function renderEventSettings(params) {
+    const app = document.getElementById('app');
+    const ev = store.get(params.id);
+    if (!ev) { location.hash = '#/'; return; }
+
+    app.innerHTML = `
+      <header class="topbar">
+        <button type="button" class="btn-back" id="btn-back">←</button>
+        <h1>모임 설정</h1>
+        <span id="save-indicator" class="save-indicator"></span>
+      </header>
+      <main class="screen">
+        <section class="card-section">
+          <label class="field-label" for="input-name">모임명</label>
+          <input id="input-name" class="input" type="text" value="${escapeAttr(ev.name)}" placeholder="모임명을 입력하세요" />
+          <label class="field-label" for="input-date">날짜</label>
+          <input id="input-date" class="input" type="date" value="${escapeAttr(ev.date)}" />
+          <label class="field-label">계좌 정보 (선택)</label>
+          <div class="account-fields">
+            <input id="input-bank" class="input" type="text" placeholder="은행" value="${escapeAttr(ev.account.bank)}" />
+            <input id="input-number" class="input" type="text" placeholder="계좌번호" value="${escapeAttr(ev.account.number)}" />
+            <input id="input-holder" class="input" type="text" placeholder="예금주" value="${escapeAttr(ev.account.holder)}" />
+          </div>
+        </section>
+
+        <button type="button" id="btn-goto-items" class="btn btn-disabled" disabled>결제 입력으로 →</button>
+      </main>
+    `;
+
+    document.getElementById('btn-back').addEventListener('click', () => { location.hash = '#/'; });
+
+    ['input-name', 'input-date', 'input-bank', 'input-number', 'input-holder'].forEach(id => {
+      document.getElementById(id).addEventListener('input', () => scheduleSave(ev));
+    });
+
+    document.getElementById('btn-goto-items').addEventListener('click', () => {
+      showToast('Stage 2에서 열립니다');
+    });
+  }
+
+  function scheduleSave(ev) {
+    clearTimeout(saveDebounceTimer);
+    const indicator = document.getElementById('save-indicator');
+    if (indicator) indicator.textContent = '';
+    saveDebounceTimer = setTimeout(() => {
+      const nameValue = document.getElementById('input-name').value.trim();
+      ev.name = nameValue || ev.name;
+      ev.date = document.getElementById('input-date').value || ev.date;
+      ev.account.bank = document.getElementById('input-bank').value;
+      ev.account.number = document.getElementById('input-number').value;
+      ev.account.holder = document.getElementById('input-holder').value;
+      store.save(ev);
+      const el = document.getElementById('save-indicator');
+      if (el) el.textContent = '저장됨 ✓';
+    }, 500);
+  }
+
   // ====== 라우트 등록 & 초기 실행 ======
   registerRoute('/', renderHome);
+  registerRoute('/event/:id', renderEventSettings);
   window.addEventListener('DOMContentLoaded', router);
 </script>
 </body>
