@@ -81,6 +81,110 @@
     flex-direction: column;
     gap: 10px;
   }
+
+  /* ====== 토스트 ====== */
+  #toast-container {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    z-index: 1000;
+  }
+  .toast {
+    background: #3A2E28;
+    color: #fff;
+    padding: 10px 16px;
+    border-radius: 10px;
+    font-size: 14px;
+    opacity: 0.95;
+  }
+
+  /* ====== 다이얼로그 ====== */
+  .dialog-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.4);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+  }
+  .dialog-box {
+    background: #fff;
+    border-radius: 16px;
+    padding: 20px;
+    width: min(320px, 90vw);
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+  .dialog-actions {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+  }
+
+  /* ====== 뱃지 ====== */
+  .badge {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+  }
+  .badge-default { background: #EFE6DC; color: #6B5B4B; }
+  .badge-primary { background: var(--color-primary); color: #fff; }
+  .badge-success { background: #4CAF50; color: #fff; }
+
+  /* ====== 홈: 모임 카드 ====== */
+  .event-list { display: flex; flex-direction: column; gap: 12px; }
+  .event-card {
+    background: #fff;
+    border-radius: 16px;
+    padding: 16px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .card-top { display: flex; justify-content: space-between; align-items: center; }
+  .event-name { font-size: 16px; font-weight: 700; }
+  .card-menu-btn {
+    background: none; border: none; font-size: 18px; color: #9A8C7C;
+    min-width: 44px; min-height: 44px;
+  }
+  .card-meta { display: flex; gap: 8px; align-items: center; color: #6B5B4B; font-size: 13px; }
+  .card-members { font-size: 18px; }
+  .card-total { font-size: 18px; font-weight: 700; color: var(--color-primary); }
+
+  .empty-state {
+    text-align: center;
+    padding: 64px 16px;
+    color: #9A8C7C;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .empty-emoji { font-size: 40px; }
+
+  .fab {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--color-primary);
+    color: #fff;
+    border: none;
+    border-radius: 999px;
+    padding: 14px 24px;
+    font-size: 15px;
+    font-weight: 700;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    min-height: 44px;
+  }
 </style>
 </head>
 <body>
@@ -246,6 +350,161 @@
     console.log(failed.length === 0 ? '✅ 전체 통과' : `❌ ${failed.length}건 실패`);
     return results;
   }
+
+  // ====== 공용 UI 컴포넌트 ======
+  function showToast(message) {
+    let container = document.getElementById('toast-container');
+    if (!container) {
+      container = document.createElement('div');
+      container.id = 'toast-container';
+      document.body.appendChild(container);
+    }
+    const toast = document.createElement('div');
+    toast.className = 'toast';
+    toast.textContent = message;
+    container.appendChild(toast);
+    setTimeout(() => toast.remove(), 2000);
+  }
+
+  function confirmDialog(message) {
+    return new Promise((resolve) => {
+      const overlay = document.createElement('div');
+      overlay.className = 'dialog-overlay';
+      overlay.innerHTML = `
+        <div class="dialog-box">
+          <p class="dialog-message"></p>
+          <div class="dialog-actions">
+            <button type="button" class="btn btn-ghost" data-action="cancel">취소</button>
+            <button type="button" class="btn btn-danger" data-action="confirm">확인</button>
+          </div>
+        </div>
+      `;
+      overlay.querySelector('.dialog-message').textContent = message;
+      overlay.addEventListener('click', (e) => {
+        const action = e.target.dataset.action;
+        if (action === 'confirm') { overlay.remove(); resolve(true); }
+        else if (action === 'cancel' || e.target === overlay) { overlay.remove(); resolve(false); }
+      });
+      document.body.appendChild(overlay);
+    });
+  }
+
+  function renderBadge(text, variant) {
+    return `<span class="badge badge-${variant || 'default'}">${escapeHtml(text)}</span>`;
+  }
+
+  // ====== 라우터 ======
+  const routes = {};
+
+  function registerRoute(pattern, renderFn) {
+    routes[pattern] = renderFn;
+  }
+
+  function parseHash() {
+    return location.hash.replace(/^#/, '') || '/';
+  }
+
+  function matchRoute(hash) {
+    if (hash === '/' && routes['/']) {
+      return { render: routes['/'], params: {} };
+    }
+    const eventMatch = hash.match(/^\/event\/([^/]+)$/);
+    if (eventMatch && routes['/event/:id']) {
+      return { render: routes['/event/:id'], params: { id: eventMatch[1] } };
+    }
+    return null;
+  }
+
+  function router() {
+    const hash = parseHash();
+    const matched = matchRoute(hash);
+    if (!matched) {
+      if (hash !== '/') { location.hash = '#/'; }
+      else if (routes['/']) { routes['/'](); }
+      return;
+    }
+    matched.render(matched.params);
+  }
+
+  window.addEventListener('hashchange', router);
+
+  // ====== 화면: 홈 (모임 목록) ======
+  function renderHome() {
+    const app = document.getElementById('app');
+    const events = store.getAll().slice().sort((a, b) => b.date.localeCompare(a.date));
+
+    app.innerHTML = `
+      <header class="topbar">
+        <h1>${escapeHtml(CONFIG.APP_SHORT)}</h1>
+      </header>
+      <main class="screen">
+        ${events.length === 0 ? renderEmptyState() : `<div class="event-list">${events.map(renderEventCard).join('')}</div>`}
+      </main>
+      <button type="button" id="btn-new-event" class="fab">+ 새 모임</button>
+    `;
+
+    document.getElementById('btn-new-event').addEventListener('click', onCreateEvent);
+    app.querySelectorAll('.event-card').forEach(card => {
+      card.addEventListener('click', (e) => {
+        if (e.target.closest('.card-menu-btn')) return;
+        location.hash = `#/event/${card.dataset.id}`;
+      });
+    });
+    app.querySelectorAll('.card-menu-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        onDeleteEvent(btn.dataset.id);
+      });
+    });
+  }
+
+  function renderEmptyState() {
+    return `
+      <div class="empty-state">
+        <div class="empty-emoji">🦊🧾</div>
+        <p>첫 모임을 만들어보세요</p>
+      </div>
+    `;
+  }
+
+  function renderEventCard(ev) {
+    const emojis = ev.members.map(m => m.emoji).join(' ');
+    return `
+      <div class="event-card" data-id="${ev.id}">
+        <div class="card-top">
+          <span class="event-name">${escapeHtml(ev.name)}</span>
+          <button type="button" class="card-menu-btn" data-id="${ev.id}">⋯</button>
+        </div>
+        <div class="card-meta">
+          <span class="event-date">${escapeHtml(ev.date)}</span>
+          ${renderBadge(ev.status === 'settled' ? '정산 완료' : '작성 중', ev.status === 'settled' ? 'success' : 'default')}
+        </div>
+        <div class="card-members">${emojis}</div>
+        <div class="card-total">₩0</div>
+      </div>
+    `;
+  }
+
+  function onCreateEvent() {
+    const today = new Date().toISOString().slice(0, 10);
+    const ev = createEvent('새 모임', today);
+    store.save(ev);
+    location.hash = `#/event/${ev.id}`;
+  }
+
+  async function onDeleteEvent(id) {
+    const ev = store.get(id);
+    if (!ev) return;
+    const ok = await confirmDialog(`"${ev.name}" 모임을 삭제할까요?`);
+    if (ok) {
+      store.remove(id);
+      renderHome();
+    }
+  }
+
+  // ====== 라우트 등록 & 초기 실행 ======
+  registerRoute('/', renderHome);
+  window.addEventListener('DOMContentLoaded', router);
 </script>
 </body>
 </html>
