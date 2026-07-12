@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>오늘은 내가 총무</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css" />
+<style>
+  /* ====== 리셋 & 레이아웃 ====== */
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    padding: 0;
+    min-width: 390px;
+    font-family: 'Pretendard', -apple-system, sans-serif;
+    background: var(--color-bg, #FFF9F2);
+    color: #3A2E28;
+  }
+  #app {
+    max-width: 560px;
+    margin: 0 auto;
+    min-height: 100vh;
+    padding: 0 16px 96px;
+    position: relative;
+  }
+  h1, h2, p { margin: 0; }
+  button { font-family: inherit; cursor: pointer; }
+  input { font-family: inherit; }
+
+  /* ====== 상단 바 ====== */
+  .topbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 16px 0;
+  }
+  .topbar h1 {
+    font-size: 20px;
+    font-weight: 700;
+    flex: 1;
+  }
+
+  /* ====== 공용 버튼 ====== */
+  .btn {
+    border: none;
+    border-radius: 12px;
+    padding: 12px 16px;
+    font-size: 15px;
+    font-weight: 600;
+    min-height: 44px;
+  }
+  .btn-primary {
+    background: var(--color-primary, #FF7A45);
+    color: #fff;
+  }
+  .btn-ghost {
+    background: #EFE6DC;
+    color: #3A2E28;
+  }
+  .btn-danger {
+    background: #E74C3C;
+    color: #fff;
+  }
+  .btn-disabled {
+    background: #E0D6CA;
+    color: #9A8C7C;
+  }
+
+  .screen {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .card-section {
+    background: #fff;
+    border-radius: 16px;
+    padding: 16px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<script>
+  // ====== CONFIG ======
+  const CONFIG = {
+    APP_NAME: '오늘은 내가 총무',
+    APP_SHORT: '오.내.총',
+    STORAGE_KEY: 'onct_events',
+    PREFS_KEY: 'onct_prefs',
+    MEMBER_MIN: 2,
+    MEMBER_MAX: 12,
+    MEMBER_COLORS: [
+      '#FFB4A2', '#FFD6A5', '#FDFFB6', '#CAFFBF',
+      '#9BF6FF', '#A0C4FF', '#BDB2FF', '#FFC6FF',
+    ],
+    MEMBER_EMOJIS: ['🦊','🐰','🐻','🐹','🐱','🐶','🐧','🐥','🦁','🐸','🐼','🐨'],
+    DATE_LOCALE: 'ko-KR',
+    COLOR_PRIMARY: '#FF7A45',
+    COLOR_BG: '#FFF9F2',
+  };
+
+  // CONFIG 색상값을 CSS 커스텀 프로퍼티로 주입 (CSS에 색상 하드코딩 금지)
+  document.documentElement.style.setProperty('--color-primary', CONFIG.COLOR_PRIMARY);
+  document.documentElement.style.setProperty('--color-bg', CONFIG.COLOR_BG);
+</script>
+</body>
+</html>
