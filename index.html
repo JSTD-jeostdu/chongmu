@@ -108,6 +108,144 @@
   // CONFIG 색상값을 CSS 커스텀 프로퍼티로 주입 (CSS에 색상 하드코딩 금지)
   document.documentElement.style.setProperty('--color-primary', CONFIG.COLOR_PRIMARY);
   document.documentElement.style.setProperty('--color-bg', CONFIG.COLOR_BG);
+
+  // ====== 유틸 ======
+  function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = String(str);
+    return div.innerHTML;
+  }
+
+  function escapeAttr(str) {
+    return String(str).replace(/"/g, '&quot;');
+  }
+
+  // ====== STORE (localStorage 추상화, Stage 4에서 Firestore로 교체 예정) ======
+  const store = {
+    _readAll() {
+      const raw = localStorage.getItem(CONFIG.STORAGE_KEY);
+      return raw ? JSON.parse(raw) : [];
+    },
+    _writeAll(events) {
+      localStorage.setItem(CONFIG.STORAGE_KEY, JSON.stringify(events));
+    },
+    getAll() {
+      return this._readAll();
+    },
+    get(id) {
+      return this._readAll().find(e => e.id === id) || null;
+    },
+    save(event) {
+      const events = this._readAll();
+      event.updatedAt = Date.now();
+      const idx = events.findIndex(e => e.id === event.id);
+      if (idx === -1) {
+        events.push(event);
+      } else {
+        events[idx] = event;
+      }
+      this._writeAll(events);
+      return event;
+    },
+    remove(id) {
+      const events = this._readAll().filter(e => e.id !== id);
+      this._writeAll(events);
+    },
+  };
+
+  // ====== 도메인 함수: 모임/멤버 ======
+  function createEvent(name, date) {
+    return {
+      id: crypto.randomUUID(),
+      name,
+      date,
+      status: 'draft',
+      account: { bank: '', number: '', holder: '' },
+      members: [],
+      items: [],
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+  }
+
+  function nextMemberColor(members) {
+    return CONFIG.MEMBER_COLORS[members.length % CONFIG.MEMBER_COLORS.length];
+  }
+
+  function addMember(event, name, emoji) {
+    const trimmed = (name || '').trim();
+    if (!trimmed) throw new Error('이름을 입력해주세요');
+    if (event.members.some(m => m.name === trimmed)) {
+      throw new Error('이미 존재하는 이름입니다');
+    }
+    if (event.members.length >= CONFIG.MEMBER_MAX) {
+      throw new Error(`멤버는 최대 ${CONFIG.MEMBER_MAX}명까지 가능합니다`);
+    }
+    const member = {
+      id: crypto.randomUUID(),
+      name: trimmed,
+      emoji: emoji || CONFIG.MEMBER_EMOJIS[event.members.length % CONFIG.MEMBER_EMOJIS.length],
+      color: nextMemberColor(event.members),
+      isOwner: event.members.length === 0,
+    };
+    event.members.push(member);
+    return member;
+  }
+
+  function removeMember(event, memberId) {
+    const idx = event.members.findIndex(m => m.id === memberId);
+    if (idx === -1) return;
+    const wasOwner = event.members[idx].isOwner;
+    event.members.splice(idx, 1);
+    if (wasOwner && event.members.length > 0) {
+      event.members[0].isOwner = true;
+    }
+  }
+
+  function setOwner(event, memberId) {
+    event.members.forEach(m => { m.isOwner = (m.id === memberId); });
+  }
+
+  // ====== 자체 테스트 (콘솔에서 runSelfTests() 실행) ======
+  function runSelfTests() {
+    const results = [];
+    function assert(desc, cond) {
+      results.push({ desc, pass: !!cond });
+    }
+
+    const ev = createEvent('테스트 모임', '2026-01-01');
+    addMember(ev, '인우');
+    addMember(ev, '찬우');
+    addMember(ev, '정우');
+    assert('첫 멤버가 총무로 지정됨', ev.members[0].isOwner === true);
+
+    removeMember(ev, ev.members[0].id);
+    assert('총무 삭제 시 다음 멤버로 이관', ev.members[0].isOwner === true);
+    assert('총무 삭제 후 멤버 수 2명', ev.members.length === 2);
+
+    let dupError = null;
+    try { addMember(ev, '찬우'); } catch (e) { dupError = e; }
+    assert('중복 이름 추가 시 에러', dupError !== null);
+
+    let emptyError = null;
+    try { addMember(ev, '   '); } catch (e) { emptyError = e; }
+    assert('공백 이름 추가 시 에러', emptyError !== null);
+
+    setOwner(ev, ev.members[1].id);
+    assert('setOwner로 총무 변경', ev.members[1].isOwner === true && ev.members[0].isOwner === false);
+
+    store.save(ev);
+    const loaded = store.get(ev.id);
+    assert('store 저장 후 조회 성공', !!loaded && loaded.id === ev.id);
+
+    store.remove(ev.id);
+    assert('store 삭제 후 조회 실패', store.get(ev.id) === null);
+
+    console.table(results);
+    const failed = results.filter(r => !r.pass);
+    console.log(failed.length === 0 ? '✅ 전체 통과' : `❌ ${failed.length}건 실패`);
+    return results;
+  }
 </script>
 </body>
 </html>
