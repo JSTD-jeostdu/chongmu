@@ -654,6 +654,8 @@
       const errorEl = document.getElementById('member-error');
       errorEl.textContent = '';
       try {
+        clearTimeout(saveDebounceTimer);
+        flushSave(ev);
         addMember(ev, nameInput.value, selectedEmoji);
         store.save(ev);
         renderEventSettings(params);
@@ -682,6 +684,8 @@
   function bindMemberListEvents(ev, params) {
     document.querySelectorAll('input[name="owner"]').forEach(radio => {
       radio.addEventListener('change', () => {
+        clearTimeout(saveDebounceTimer);
+        flushSave(ev);
         setOwner(ev, radio.value);
         store.save(ev);
         renderEventSettings(params);
@@ -689,6 +693,8 @@
     });
     document.querySelectorAll('.member-remove-btn').forEach(btn => {
       btn.addEventListener('click', () => {
+        clearTimeout(saveDebounceTimer);
+        flushSave(ev);
         removeMember(ev, btn.dataset.id);
         store.save(ev);
         renderEventSettings(params);
@@ -696,21 +702,23 @@
     });
   }
 
+  function flushSave(ev) {
+    const nameValue = document.getElementById('input-name').value.trim();
+    ev.name = nameValue || ev.name;
+    ev.date = document.getElementById('input-date').value || ev.date;
+    ev.account.bank = document.getElementById('input-bank').value;
+    ev.account.number = document.getElementById('input-number').value;
+    ev.account.holder = document.getElementById('input-holder').value;
+    store.save(ev);
+    const el = document.getElementById('save-indicator');
+    if (el) el.textContent = '저장됨 ✓';
+  }
+
   function scheduleSave(ev) {
     clearTimeout(saveDebounceTimer);
     const indicator = document.getElementById('save-indicator');
     if (indicator) indicator.textContent = '';
-    saveDebounceTimer = setTimeout(() => {
-      const nameValue = document.getElementById('input-name').value.trim();
-      ev.name = nameValue || ev.name;
-      ev.date = document.getElementById('input-date').value || ev.date;
-      ev.account.bank = document.getElementById('input-bank').value;
-      ev.account.number = document.getElementById('input-number').value;
-      ev.account.holder = document.getElementById('input-holder').value;
-      store.save(ev);
-      const el = document.getElementById('save-indicator');
-      if (el) el.textContent = '저장됨 ✓';
-    }, 500);
+    saveDebounceTimer = setTimeout(() => flushSave(ev), 500);
   }
 
   // ====== 라우트 등록 & 초기 실행 ======
