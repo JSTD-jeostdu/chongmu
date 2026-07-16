@@ -297,6 +297,10 @@
     DATE_LOCALE: 'ko-KR',
     COLOR_PRIMARY: '#FF7A45',
     COLOR_BG: '#FFF9F2',
+    ROUNDING: 'floor1',            // 'floor1' | 'ceil10' | 'ceil100'
+    ITEM_EMOJIS: ['🍽️','☕','🍦','📷','🚗','🎮','🎫','🛍️','🍺','🧾'],
+    CURRENCY_LOCALE: 'ko-KR',
+    DEV_MODE: false,
   };
 
   // CONFIG 색상값을 CSS 커스텀 프로퍼티로 주입 (CSS에 색상 하드코딩 금지)
@@ -400,6 +404,153 @@
     event.members.forEach(m => { m.isOwner = (m.id === memberId); });
   }
 
+  // ====== 도메인 함수: 결제 항목 ======
+  function addItem(event, data) {
+    const trimmed = (data.name || '').trim();
+    if (!trimmed) throw new Error('항목명을 입력해주세요');
+    if (!data.participantIds || data.participantIds.length === 0) {
+      throw new Error('참여자를 1명 이상 선택해주세요');
+    }
+    const fixedAmounts = data.fixedAmounts || {};
+    const fixedSum = Object.values(fixedAmounts).reduce((s, v) => s + v, 0);
+    if (fixedSum > data.amount) {
+      throw new Error('고정 금액 합이 총액을 초과합니다');
+    }
+    const item = {
+      id: crypto.randomUUID(),
+      name: trimmed,
+      emoji: data.emoji || '',
+      amount: data.amount,
+      participantIds: data.participantIds.slice(),
+      fixedAmounts: Object.assign({}, fixedAmounts),
+      memo: data.memo || '',
+      order: event.items.length,
+    };
+    event.items.push(item);
+    if (event.status === 'settled') event.status = 'draft';
+    return item;
+  }
+
+  function updateItem(event, itemId, data) {
+    const item = event.items.find(i => i.id === itemId);
+    if (!item) throw new Error('항목을 찾을 수 없습니다');
+    const trimmed = (data.name || '').trim();
+    if (!trimmed) throw new Error('항목명을 입력해주세요');
+    if (!data.participantIds || data.participantIds.length === 0) {
+      throw new Error('참여자를 1명 이상 선택해주세요');
+    }
+    const fixedAmounts = data.fixedAmounts || {};
+    const fixedSum = Object.values(fixedAmounts).reduce((s, v) => s + v, 0);
+    if (fixedSum > data.amount) {
+      throw new Error('고정 금액 합이 총액을 초과합니다');
+    }
+    item.name = trimmed;
+    item.emoji = data.emoji || '';
+    item.amount = data.amount;
+    item.participantIds = data.participantIds.slice();
+    item.fixedAmounts = Object.assign({}, fixedAmounts);
+    item.memo = data.memo || '';
+    if (event.status === 'settled') event.status = 'draft';
+    return item;
+  }
+
+  function removeItem(event, itemId) {
+    const idx = event.items.findIndex(i => i.id === itemId);
+    if (idx === -1) return;
+    event.items.splice(idx, 1);
+    event.items.forEach((item, i) => { item.order = i; });
+    if (event.status === 'settled') event.status = 'draft';
+  }
+
+  function moveItemOrder(event, itemId, direction) {
+    const sorted = event.items.slice().sort((a, b) => a.order - b.order);
+    const idx = sorted.findIndex(i => i.id === itemId);
+    if (idx === -1) return;
+    const swapIdx = direction === 'up' ? idx - 1 : idx + 1;
+    if (swapIdx < 0 || swapIdx >= sorted.length) return;
+    const tmp = sorted[idx].order;
+    sorted[idx].order = sorted[swapIdx].order;
+    sorted[swapIdx].order = tmp;
+  }
+
+  // ====== 정산 계산 엔진 (순수 함수 — DOM/store 접근 금지) ======
+  function calcSettlement(event) {
+    const matrix = {};
+    const itemTotals = {};
+    const memberTotals = {};
+    const errors = [];
+    event.members.forEach(m => { memberTotals[m.id] = 0; });
+
+    event.items.forEach(item => {
+      matrix[item.id] = {};
+      itemTotals[item.id] = item.amount;
+
+      if (item.participantIds.length === 0) {
+        errors.push({ itemId: item.id, code: 'NO_PARTICIPANT', message: `"${item.name}": 참여자가 없습니다` });
+        return;
+      }
+
+      const fixedAmounts = item.fixedAmounts || {};
+      const fixedKeys = Object.keys(fixedAmounts);
+      const invalidFixedKey = fixedKeys.find(id => !item.participantIds.includes(id));
+      if (invalidFixedKey) {
+        errors.push({ itemId: item.id, code: 'FIXED_NOT_PARTICIPANT', message: `"${item.name}": 고정 금액 대상이 참여자 목록에 없습니다` });
+        return;
+      }
+
+      const fixedSum = fixedKeys.reduce((sum, id) => sum + fixedAmounts[id], 0);
+      if (fixedSum > item.amount) {
+        errors.push({ itemId: item.id, code: 'FIXED_EXCEEDS', message: `"${item.name}": 고정 금액 합(₩${fixedSum})이 총액(₩${item.amount})을 초과합니다` });
+        return;
+      }
+
+      fixedKeys.forEach(id => { matrix[item.id][id] = fixedAmounts[id]; });
+
+      const remainderParticipants = item.participantIds.filter(id => !fixedKeys.includes(id));
+      const remainingAmount = item.amount - fixedSum;
+      if (remainderParticipants.length > 0) {
+        distributeRemainder(event, item, remainderParticipants, remainingAmount, matrix[item.id]);
+      }
+
+      const distributedSum = item.participantIds.reduce((sum, id) => sum + (matrix[item.id][id] || 0), 0);
+      if (distributedSum !== item.amount) {
+        errors.push({ itemId: item.id, code: 'INTEGRITY_MISMATCH', message: `"${item.name}": 분배액 합(₩${distributedSum})이 총액(₩${item.amount})과 일치하지 않습니다` });
+      }
+
+      item.participantIds.forEach(id => {
+        memberTotals[id] = (memberTotals[id] || 0) + (matrix[item.id][id] || 0);
+      });
+    });
+
+    const grandTotal = event.items.reduce((sum, item) => sum + item.amount, 0);
+    const owner = event.members.find(m => m.isOwner);
+    const transfers = {};
+    event.members.forEach(m => {
+      if (!owner || m.id !== owner.id) {
+        transfers[m.id] = memberTotals[m.id] || 0;
+      }
+    });
+
+    return { matrix, itemTotals, memberTotals, grandTotal, transfers, errors };
+  }
+
+  // 잔여 금액을 floor1 규칙으로 분배: 몫은 내림, 끝전은 bonusMemberId(없으면 배열 순서상 첫 참여자)에게 가산
+  function distributeFloor1(event, participantIds, remainingAmount, resultMap, bonusMemberId) {
+    const count = participantIds.length;
+    const share = Math.floor(remainingAmount / count);
+    const remainder = remainingAmount - share * count;
+    participantIds.forEach(id => { resultMap[id] = share; });
+    const bonusId = bonusMemberId || event.members.find(m => participantIds.includes(m.id)).id;
+    resultMap[bonusId] = (resultMap[bonusId] || 0) + remainder;
+  }
+
+  // CONFIG.ROUNDING에 따라 잔여 금액을 분배한다. 이 태스크에서는 floor1만 구현 — ceil10/ceil100은 Task 2에서 추가.
+  function distributeRemainder(event, item, participantIds, remainingAmount, resultMap) {
+    const owner = event.members.find(m => m.isOwner);
+    const ownerParticipates = !!owner && participantIds.includes(owner.id);
+    distributeFloor1(event, participantIds, remainingAmount, resultMap, ownerParticipates ? owner.id : null);
+  }
+
   // ====== 자체 테스트 (콘솔에서 runSelfTests() 실행) ======
   function runSelfTests() {
     const results = [];
@@ -438,6 +589,102 @@
     console.table(results);
     const failed = results.filter(r => !r.pass);
     console.log(failed.length === 0 ? '✅ 전체 통과' : `❌ ${failed.length}건 실패`);
+    return results;
+  }
+
+  // ====== 회귀 테스트 (콘솔에서 runRegressionTests() 실행, CONFIG.DEV_MODE=true면 자동 실행) ======
+  function runRegressionTests() {
+    const results = [];
+    function assert(desc, cond) {
+      results.push({ desc, pass: !!cond });
+    }
+
+    function makeEventWithMembers(name, ownerName) {
+      const ev = createEvent(name, '2026-01-01');
+      ['인우', '찬우', '정표', '정우', '은찬'].forEach(n => addMember(ev, n));
+      setOwner(ev, ev.members.find(m => m.name === ownerName).id);
+      return ev;
+    }
+
+    // ---- 시드 A: 인당 39,820 / 총계 199,100 ----
+    const evA = makeEventWithMembers('시드 A', '정우');
+    const idsA = evA.members.map(m => m.id);
+    [
+      ['인우메뉴', 27000], ['찬우메뉴', 21500], ['정표메뉴', 28000], ['정우메뉴', 31500], ['은찬메뉴', 20900],
+      ['오프닝 카페메뉴', 25500], ['포토이즘', 15000], ['라라스위토', 12000], ['주차비', 2000], ['더벤티', 15700],
+    ].forEach(([n, amount]) => addItem(evA, { name: n, amount, participantIds: idsA }));
+    const resultA = calcSettlement(evA);
+    assert('시드 A: 인당 39,820원', idsA.every(id => resultA.memberTotals[id] === 39820));
+    assert('시드 A: 총계 199,100원', resultA.grandTotal === 199100);
+    assert('시드 A: 오류 없음', resultA.errors.length === 0);
+
+    // ---- 시드 B: 인당 54,800 / 총계 274,000 ----
+    const evB = makeEventWithMembers('시드 B', '정우');
+    const idsB = evB.members.map(m => m.id);
+    [
+      ['돈까스', 45500], ['모앙떡', 27000], ['옹근달 카페', 32500],
+      ['방탈출', 75000], ['포토랩 라이뷰러리', 44000], ['방탈출 예약금', 50000],
+    ].forEach(([n, amount]) => addItem(evB, { name: n, amount, participantIds: idsB }));
+    const resultB = calcSettlement(evB);
+    assert('시드 B: 인당 54,800원', idsB.every(id => resultB.memberTotals[id] === 54800));
+    assert('시드 B: 총계 274,000원', resultB.grandTotal === 274000);
+    assert('시드 B: 오류 없음', resultB.errors.length === 0);
+
+    // ---- 단위 테스트: 끝전 (10,000원 ÷ 3인, 총무 포함) ----
+    const evC = createEvent('끝전 테스트', '2026-01-01');
+    addMember(evC, '총무'); // 첫 멤버 = 자동으로 총무
+    addMember(evC, 'B');
+    addMember(evC, 'C');
+    addItem(evC, { name: '테스트항목', amount: 10000, participantIds: evC.members.map(m => m.id) });
+    const resultC = calcSettlement(evC);
+    const ownerC = evC.members.find(m => m.name === '총무').id;
+    const bC = evC.members.find(m => m.name === 'B').id;
+    const cC = evC.members.find(m => m.name === 'C').id;
+    assert('끝전: 총무 3,334원', resultC.memberTotals[ownerC] === 3334);
+    assert('끝전: B 3,333원', resultC.memberTotals[bC] === 3333);
+    assert('끝전: C 3,333원', resultC.memberTotals[cC] === 3333);
+
+    // ---- 단위 테스트: 참여자 제외 (시드 B 방탈출 75,000원에서 은찬 제외) ----
+    const evD = makeEventWithMembers('참여자 제외 테스트', '정우');
+    const eunchanD = evD.members.find(m => m.name === '은찬').id;
+    const idsWithoutEunchan = evD.members.filter(m => m.id !== eunchanD).map(m => m.id);
+    addItem(evD, { name: '방탈출', amount: 75000, participantIds: idsWithoutEunchan });
+    const resultD = calcSettlement(evD);
+    const itemD = evD.items[0].id;
+    assert('참여자 제외: 4인 각 18,750원', idsWithoutEunchan.every(id => resultD.matrix[itemD][id] === 18750));
+    assert('참여자 제외: 은찬 키 없음', resultD.matrix[itemD][eunchanD] === undefined);
+
+    // ---- 단위 테스트: 고정 금액 (더벤티 15,700원에서 정표 고정 3,640원) ----
+    const evE = makeEventWithMembers('고정 금액 테스트', '정우');
+    const jeongpyoE = evE.members.find(m => m.name === '정표').id;
+    addItem(evE, { name: '더벤티', amount: 15700, participantIds: evE.members.map(m => m.id), fixedAmounts: { [jeongpyoE]: 3640 } });
+    const resultE = calcSettlement(evE);
+    const itemE = evE.items[0].id;
+    const othersE = evE.members.filter(m => m.id !== jeongpyoE).map(m => m.id);
+    assert('고정 금액: 정표 3,640원', resultE.matrix[itemE][jeongpyoE] === 3640);
+    assert('고정 금액: 나머지 4인 각 3,015원', othersE.every(id => resultE.matrix[itemE][id] === 3015));
+
+    // ---- 단위 테스트: 에러 검출 (고정 합 초과) — addItem은 이 상태를 막으므로 calcSettlement 방어 로직만 직접 검증 ----
+    const evF = createEvent('에러 테스트', '2026-01-01');
+    addMember(evF, 'A');
+    addMember(evF, 'B');
+    const idsF = evF.members.map(m => m.id);
+    evF.items.push({ id: crypto.randomUUID(), name: '초과 테스트', emoji: '', amount: 1000, participantIds: idsF, fixedAmounts: { [idsF[0]]: 2000 }, memo: '', order: 0 });
+    const resultF = calcSettlement(evF);
+    assert('에러 검출: FIXED_EXCEEDS', resultF.errors.some(e => e.code === 'FIXED_EXCEEDS'));
+
+    // ---- 전 테스트 공통: Σ분배액 === amount ----
+    [evA, evB, evC, evD, evE].forEach(ev => {
+      const r = calcSettlement(ev);
+      ev.items.forEach(item => {
+        const sum = Object.values(r.matrix[item.id] || {}).reduce((s, v) => s + v, 0);
+        assert(`${ev.name} - "${item.name}": 분배액 합 === amount`, sum === item.amount);
+      });
+    });
+
+    console.table(results);
+    const failed = results.filter(r => !r.pass);
+    console.log(failed.length === 0 ? '✅ 회귀 테스트 전체 통과' : `❌ ${failed.length}건 실패`);
     return results;
   }
 
