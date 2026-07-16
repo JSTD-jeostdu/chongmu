@@ -412,7 +412,11 @@
       throw new Error('참여자를 1명 이상 선택해주세요');
     }
     const fixedAmounts = data.fixedAmounts || {};
-    const fixedSum = Object.values(fixedAmounts).reduce((s, v) => s + v, 0);
+    const fixedKeys = Object.keys(fixedAmounts);
+    if (fixedKeys.some(id => !data.participantIds.includes(id))) {
+      throw new Error('고정 금액 대상이 참여자 목록에 없습니다');
+    }
+    const fixedSum = fixedKeys.reduce((s, id) => s + fixedAmounts[id], 0);
     if (fixedSum > data.amount) {
       throw new Error('고정 금액 합이 총액을 초과합니다');
     }
@@ -440,7 +444,11 @@
       throw new Error('참여자를 1명 이상 선택해주세요');
     }
     const fixedAmounts = data.fixedAmounts || {};
-    const fixedSum = Object.values(fixedAmounts).reduce((s, v) => s + v, 0);
+    const fixedKeys = Object.keys(fixedAmounts);
+    if (fixedKeys.some(id => !data.participantIds.includes(id))) {
+      throw new Error('고정 금액 대상이 참여자 목록에 없습니다');
+    }
+    const fixedSum = fixedKeys.reduce((s, id) => s + fixedAmounts[id], 0);
     if (fixedSum > data.amount) {
       throw new Error('고정 금액 합이 총액을 초과합니다');
     }
