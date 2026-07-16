@@ -552,11 +552,31 @@
     resultMap[bonusId] = (resultMap[bonusId] || 0) + remainder;
   }
 
-  // CONFIG.ROUNDING에 따라 잔여 금액을 분배한다. 이 태스크에서는 floor1만 구현 — ceil10/ceil100은 Task 2에서 추가.
+  // CONFIG.ROUNDING에 따라 잔여 금액을 분배한다.
   function distributeRemainder(event, item, participantIds, remainingAmount, resultMap) {
     const owner = event.members.find(m => m.isOwner);
     const ownerParticipates = !!owner && participantIds.includes(owner.id);
-    distributeFloor1(event, participantIds, remainingAmount, resultMap, ownerParticipates ? owner.id : null);
+
+    if (CONFIG.ROUNDING === 'floor1' || !ownerParticipates) {
+      distributeFloor1(event, participantIds, remainingAmount, resultMap, ownerParticipates ? owner.id : null);
+      return;
+    }
+
+    const unit = CONFIG.ROUNDING === 'ceil100' ? 100 : 10;
+    const others = participantIds.filter(id => id !== owner.id);
+    const equalShare = remainingAmount / participantIds.length;
+    const roundedShare = Math.ceil(equalShare / unit) * unit;
+    const othersSum = roundedShare * others.length;
+    const ownerShare = remainingAmount - othersSum;
+
+    if (ownerShare < 0) {
+      console.warn(`항목 "${item.name}"(id: ${item.id}): ${CONFIG.ROUNDING} 라운딩 시 총무 몫이 음수(${ownerShare})가 되어 floor1로 폴백합니다`);
+      distributeFloor1(event, participantIds, remainingAmount, resultMap, owner.id);
+      return;
+    }
+
+    others.forEach(id => { resultMap[id] = roundedShare; });
+    resultMap[owner.id] = ownerShare;
   }
 
   // ====== 자체 테스트 (콘솔에서 runSelfTests() 실행) ======
@@ -680,6 +700,46 @@
     evF.items.push({ id: crypto.randomUUID(), name: '초과 테스트', emoji: '', amount: 1000, participantIds: idsF, fixedAmounts: { [idsF[0]]: 2000 }, memo: '', order: 0 });
     const resultF = calcSettlement(evF);
     assert('에러 검출: FIXED_EXCEEDS', resultF.errors.some(e => e.code === 'FIXED_EXCEEDS'));
+
+    // ---- 단위 테스트: ceil10 라운딩 ----
+    const originalRounding = CONFIG.ROUNDING;
+    CONFIG.ROUNDING = 'ceil10';
+    const evG = createEvent('ceil10 테스트', '2026-01-01');
+    addMember(evG, '총무'); addMember(evG, 'B'); addMember(evG, 'C');
+    addItem(evG, { name: 'ceil10 항목', amount: 1000, participantIds: evG.members.map(m => m.id) });
+    const resultG = calcSettlement(evG);
+    const ownerG = evG.members.find(m => m.name === '총무').id;
+    const bG = evG.members.find(m => m.name === 'B').id;
+    const cG = evG.members.find(m => m.name === 'C').id;
+    const itemG = evG.items[0].id;
+    assert('ceil10: B/C 각 340원', resultG.matrix[itemG][bG] === 340 && resultG.matrix[itemG][cG] === 340);
+    assert('ceil10: 총무 320원', resultG.matrix[itemG][ownerG] === 320);
+
+    // ---- 단위 테스트: ceil100 라운딩 ----
+    CONFIG.ROUNDING = 'ceil100';
+    const evH = createEvent('ceil100 테스트', '2026-01-01');
+    addMember(evH, '총무'); addMember(evH, 'B'); addMember(evH, 'C');
+    addItem(evH, { name: 'ceil100 항목', amount: 1000, participantIds: evH.members.map(m => m.id) });
+    const resultH = calcSettlement(evH);
+    const ownerH = evH.members.find(m => m.name === '총무').id;
+    const bH = evH.members.find(m => m.name === 'B').id;
+    const cH = evH.members.find(m => m.name === 'C').id;
+    const itemH = evH.items[0].id;
+    assert('ceil100: B/C 각 400원', resultH.matrix[itemH][bH] === 400 && resultH.matrix[itemH][cH] === 400);
+    assert('ceil100: 총무 200원', resultH.matrix[itemH][ownerH] === 200);
+
+    // ---- 단위 테스트: ceil100 음수 폴백 → floor1 ----
+    const evI = createEvent('ceil100 폴백 테스트', '2026-01-01');
+    addMember(evI, '총무'); addMember(evI, 'B'); addMember(evI, 'C');
+    addItem(evI, { name: 'ceil100 폴백 항목', amount: 100, participantIds: evI.members.map(m => m.id) });
+    const resultI = calcSettlement(evI);
+    const ownerI = evI.members.find(m => m.name === '총무').id;
+    const bI = evI.members.find(m => m.name === 'B').id;
+    const cI = evI.members.find(m => m.name === 'C').id;
+    const itemI = evI.items[0].id;
+    assert('ceil100 폴백: 총무 34원(floor1로 폴백)', resultI.matrix[itemI][ownerI] === 34);
+    assert('ceil100 폴백: B/C 각 33원', resultI.matrix[itemI][bI] === 33 && resultI.matrix[itemI][cI] === 33);
+    CONFIG.ROUNDING = originalRounding;
 
     // ---- 전 테스트 공통: Σ분배액 === amount ----
     [evA, evB, evC, evD, evE].forEach(ev => {
