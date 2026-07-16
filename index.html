@@ -817,6 +817,14 @@
     if (eventMatch && routes['/event/:id']) {
       return { render: routes['/event/:id'], params: { id: eventMatch[1] } };
     }
+    const itemsMatch = hash.match(/^\/event\/([^/]+)\/items$/);
+    if (itemsMatch && routes['/event/:id/items']) {
+      return { render: routes['/event/:id/items'], params: { id: itemsMatch[1] } };
+    }
+    const resultMatch = hash.match(/^\/event\/([^/]+)\/result$/);
+    if (resultMatch && routes['/event/:id/result']) {
+      return { render: routes['/event/:id/result'], params: { id: resultMatch[1] } };
+    }
     return null;
   }
 
@@ -874,6 +882,7 @@
 
   function renderEventCard(ev) {
     const emojis = ev.members.map(m => m.emoji).join(' ');
+    const grandTotal = calcSettlement(ev).grandTotal;
     return `
       <div class="event-card" data-id="${ev.id}">
         <div class="card-top">
@@ -885,7 +894,7 @@
           ${renderBadge(ev.status === 'settled' ? '정산 완료' : '작성 중', ev.status === 'settled' ? 'success' : 'default')}
         </div>
         <div class="card-members">${emojis}</div>
-        <div class="card-total">₩0</div>
+        <div class="card-total">₩${grandTotal.toLocaleString(CONFIG.CURRENCY_LOCALE)}</div>
       </div>
     `;
   }
@@ -949,7 +958,7 @@
           </div>
         </section>
 
-        <button type="button" id="btn-goto-items" class="btn btn-disabled">결제 입력으로 →</button>
+        <button type="button" id="btn-goto-items" class="btn btn-primary">결제 입력으로 →</button>
       </main>
     `;
 
@@ -964,7 +973,7 @@
     });
 
     document.getElementById('btn-goto-items').addEventListener('click', () => {
-      showToast('Stage 2에서 열립니다');
+      location.hash = `#/event/${ev.id}/items`;
     });
 
     let selectedEmoji = CONFIG.MEMBER_EMOJIS[ev.members.length % CONFIG.MEMBER_EMOJIS.length];
