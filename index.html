@@ -628,7 +628,7 @@
           <div class="member-add-form">
             <input id="input-member-name" class="input" type="text" placeholder="이름" />
             <div id="emoji-picker" class="emoji-picker">
-              ${CONFIG.MEMBER_EMOJIS.map((e, i) => `<button type="button" class="emoji-btn${i === 0 ? ' selected' : ''}" data-emoji="${e}">${e}</button>`).join('')}
+              ${CONFIG.MEMBER_EMOJIS.map((e, i) => `<button type="button" class="emoji-btn${i === ev.members.length % CONFIG.MEMBER_EMOJIS.length ? ' selected' : ''}" data-emoji="${e}">${e}</button>`).join('')}
             </div>
             <button type="button" id="btn-add-member" class="btn btn-primary">멤버 추가</button>
           </div>
@@ -638,7 +638,11 @@
       </main>
     `;
 
-    document.getElementById('btn-back').addEventListener('click', () => { location.hash = '#/'; });
+    document.getElementById('btn-back').addEventListener('click', () => {
+      clearTimeout(saveDebounceTimer);
+      flushSave(ev);
+      location.hash = '#/';
+    });
 
     ['input-name', 'input-date', 'input-bank', 'input-number', 'input-holder'].forEach(id => {
       document.getElementById(id).addEventListener('input', () => scheduleSave(ev));
@@ -648,7 +652,7 @@
       showToast('Stage 2에서 열립니다');
     });
 
-    let selectedEmoji = CONFIG.MEMBER_EMOJIS[0];
+    let selectedEmoji = CONFIG.MEMBER_EMOJIS[ev.members.length % CONFIG.MEMBER_EMOJIS.length];
 
     document.querySelectorAll('.emoji-btn').forEach(btn => {
       btn.addEventListener('click', () => {
