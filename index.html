@@ -267,6 +267,89 @@
     background: #fff;
   }
 
+  /* ====== 결제 입력 ====== */
+  .item-list { display: flex; flex-direction: column; gap: 8px; }
+  .item-card {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 10px 12px;
+    border-radius: 12px;
+    background: #F9F4EC;
+  }
+  .item-card-top { display: flex; align-items: center; gap: 8px; }
+  .item-emoji { font-size: 18px; }
+  .item-name { flex: 1; font-weight: 600; }
+  .item-amount { font-weight: 700; color: var(--color-primary); }
+  .item-card-actions { display: flex; justify-content: flex-end; gap: 4px; align-items: center; }
+  .item-order-btn {
+    background: none; border: none; font-size: 12px; color: #9A8C7C;
+    min-width: 32px; min-height: 32px;
+  }
+  .item-order-btn:disabled { opacity: 0.3; }
+  .item-delete-btn {
+    background: none; border: none; color: #6B5B4B; font-size: 14px;
+    min-width: 32px; min-height: 32px;
+  }
+  .item-participants { display: flex; align-items: center; gap: 4px; font-size: 16px; flex-wrap: wrap; }
+  .item-participant-inactive { opacity: 0.35; }
+
+  .item-add-form { display: flex; flex-direction: column; gap: 8px; }
+  .participant-toggle-list { display: flex; flex-wrap: wrap; gap: 6px; }
+  .participant-toggle-chip {
+    border: 2px solid transparent;
+    border-radius: 999px;
+    padding: 6px 12px;
+    font-size: 13px;
+    font-weight: 600;
+    background: #F5EEE4;
+    opacity: 0.4;
+    min-height: 36px;
+  }
+  .participant-toggle-chip.active {
+    border-color: var(--color-primary);
+    opacity: 1;
+  }
+  .participant-toggle-actions { display: flex; gap: 8px; }
+  .item-form-actions { display: flex; gap: 8px; }
+
+  .item-summary-bar {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: #fff;
+    box-shadow: 0 -2px 8px rgba(0,0,0,0.08);
+    padding: 10px 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    z-index: 500;
+  }
+  .item-summary-members {
+    flex: 1;
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 10px;
+    overflow-x: auto;
+    font-size: 13px;
+  }
+  .item-summary-chip { white-space: nowrap; }
+
+  #advanced-options summary {
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    color: #6B5B4B;
+  }
+  .fixed-amount-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .fixed-amount-row .input-fixed-amount { width: 120px; }
+
   /* ====== 반응형 보강 ====== */
   @media (min-width: 561px) {
     #app { padding-left: 0; padding-right: 0; }
@@ -1058,10 +1141,291 @@
     saveDebounceTimer = setTimeout(() => flushSave(ev), 500);
   }
 
+  // ====== 화면: 결제 입력 ======
+  let editingItemId = null;
+  let selectedItemParticipants = null;
+
+  function renderItemsEntry(params, opts) {
+    opts = opts || {};
+    const app = document.getElementById('app');
+    const ev = store.get(params.id);
+    if (!ev) { location.hash = '#/'; return; }
+
+    const sortedItems = ev.items.slice().sort((a, b) => a.order - b.order);
+    const settlement = calcSettlement(ev);
+    const editing = editingItemId ? ev.items.find(i => i.id === editingItemId) : null;
+
+    app.innerHTML = `
+      <header class="topbar">
+        <button type="button" class="btn-back" id="btn-back">←</button>
+        <h1>결제 입력</h1>
+        <span id="save-indicator" class="save-indicator">${opts.justSaved ? '저장됨 ✓' : ''}</span>
+      </header>
+      <main class="screen">
+        <section class="card-section">
+          <h2>항목 (${ev.items.length})</h2>
+          <div id="item-list" class="item-list">${sortedItems.map((item, i) => renderItemCard(item, ev, i, sortedItems.length)).join('')}</div>
+          ${ev.items.length === 0 ? '<div class="field-hint">결제 항목을 추가해주세요</div>' : ''}
+        </section>
+
+        <section class="card-section">
+          <h2>${editing ? '항목 수정' : '항목 추가'}</h2>
+          ${renderItemForm(ev, editing)}
+        </section>
+      </main>
+      <div class="item-summary-bar">
+        <div class="item-summary-members">
+          ${ev.members.map(m => `<span class="item-summary-chip">${m.emoji} ₩${(settlement.memberTotals[m.id] || 0).toLocaleString(CONFIG.CURRENCY_LOCALE)}</span>`).join('')}
+        </div>
+        <button type="button" id="btn-goto-result" class="btn btn-primary">정산 결과 보기 →</button>
+      </div>
+    `;
+
+    document.getElementById('btn-back').addEventListener('click', () => { location.hash = `#/event/${ev.id}`; });
+    document.getElementById('btn-goto-result').addEventListener('click', () => { location.hash = `#/event/${ev.id}/result`; });
+
+    const initialParticipantIds = editing ? editing.participantIds : ev.members.map(m => m.id);
+    selectedItemParticipants = new Set(initialParticipantIds);
+    let selectedItemEmoji = editing ? editing.emoji : CONFIG.ITEM_EMOJIS[0];
+
+    document.querySelectorAll('#item-emoji-picker .emoji-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('#item-emoji-picker .emoji-btn').forEach(b => b.classList.remove('selected'));
+        btn.classList.add('selected');
+        selectedItemEmoji = btn.dataset.emoji;
+        document.getElementById('input-item-emoji-custom').value = '';
+      });
+    });
+
+    document.getElementById('input-item-amount').addEventListener('input', (e) => {
+      formatAmountInput(e.target);
+      updateFixedPreview(ev);
+    });
+
+    document.querySelectorAll('.participant-toggle-chip').forEach(chip => {
+      chip.addEventListener('click', () => {
+        const id = chip.dataset.id;
+        if (selectedItemParticipants.has(id)) {
+          selectedItemParticipants.delete(id);
+          chip.classList.remove('active');
+        } else {
+          selectedItemParticipants.add(id);
+          chip.classList.add('active');
+        }
+        updateFixedPreview(ev);
+      });
+    });
+
+    document.getElementById('btn-select-all').addEventListener('click', () => {
+      document.querySelectorAll('.participant-toggle-chip').forEach(chip => {
+        selectedItemParticipants.add(chip.dataset.id);
+        chip.classList.add('active');
+      });
+      updateFixedPreview(ev);
+    });
+
+    document.getElementById('btn-deselect-all').addEventListener('click', () => {
+      document.querySelectorAll('.participant-toggle-chip').forEach(chip => {
+        selectedItemParticipants.delete(chip.dataset.id);
+        chip.classList.remove('active');
+      });
+      updateFixedPreview(ev);
+    });
+
+    document.querySelectorAll('.input-fixed-amount').forEach(input => {
+      input.addEventListener('input', (e) => {
+        formatAmountInput(e.target);
+        updateFixedPreview(ev);
+      });
+    });
+
+    updateFixedPreview(ev);
+
+    document.getElementById('btn-save-item').addEventListener('click', () => {
+      const errorEl = document.getElementById('item-form-error');
+      errorEl.textContent = '';
+      const name = document.getElementById('input-item-name').value;
+      const customEmoji = document.getElementById('input-item-emoji-custom').value.trim();
+      const emoji = customEmoji || selectedItemEmoji || '';
+      const amount = parseAmountInput(document.getElementById('input-item-amount'));
+      const memo = document.getElementById('input-item-memo').value;
+      const participantIds = Array.from(selectedItemParticipants);
+      const fixedAmounts = readFixedAmounts();
+      const fixedSum = Object.values(fixedAmounts).reduce((s, v) => s + v, 0);
+      if (fixedSum > amount) {
+        errorEl.textContent = '고정 금액 합이 총액을 초과합니다';
+        return;
+      }
+      try {
+        if (editingItemId) {
+          updateItem(ev, editingItemId, { name, emoji, amount, participantIds, fixedAmounts, memo });
+        } else {
+          addItem(ev, { name, emoji, amount, participantIds, fixedAmounts, memo });
+        }
+        store.save(ev);
+        editingItemId = null;
+        renderItemsEntry(params, { justSaved: true });
+      } catch (err) {
+        errorEl.textContent = err.message;
+      }
+    });
+
+    if (editing) {
+      document.getElementById('btn-cancel-edit').addEventListener('click', () => {
+        editingItemId = null;
+        renderItemsEntry(params);
+      });
+    }
+
+    document.querySelectorAll('.item-edit-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        editingItemId = btn.dataset.id;
+        renderItemsEntry(params);
+      });
+    });
+
+    document.querySelectorAll('.item-delete-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const item = ev.items.find(i => i.id === btn.dataset.id);
+        const ok = await confirmDialog(`"${item.name}" 항목을 삭제할까요?`);
+        if (ok) {
+          if (editingItemId === item.id) editingItemId = null;
+          removeItem(ev, btn.dataset.id);
+          store.save(ev);
+          renderItemsEntry(params, { justSaved: true });
+        }
+      });
+    });
+
+    document.querySelectorAll('.item-order-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        moveItemOrder(ev, btn.dataset.id, btn.dataset.direction);
+        store.save(ev);
+        renderItemsEntry(params, { justSaved: true });
+      });
+    });
+  }
+
+  function renderItemForm(ev, editing) {
+    const amount = editing ? editing.amount : 0;
+    const participantIds = editing ? editing.participantIds : ev.members.map(m => m.id);
+    const fixedAmounts = editing ? editing.fixedAmounts : {};
+    const isPresetEmoji = editing && CONFIG.ITEM_EMOJIS.includes(editing.emoji);
+    return `
+      <div class="item-add-form">
+        <input id="input-item-name" class="input" type="text" placeholder="항목명" value="${editing ? escapeAttr(editing.name) : ''}" />
+        <div class="emoji-picker" id="item-emoji-picker">
+          ${CONFIG.ITEM_EMOJIS.map((e, i) => `<button type="button" class="emoji-btn${(editing ? editing.emoji === e : i === 0) ? ' selected' : ''}" data-emoji="${e}">${e}</button>`).join('')}
+        </div>
+        <input id="input-item-emoji-custom" class="input" type="text" maxlength="4" placeholder="이모지 직접 입력 (선택)" value="${editing && !isPresetEmoji ? escapeAttr(editing.emoji) : ''}" />
+        <input id="input-item-amount" class="input" type="text" inputmode="numeric" placeholder="금액" value="${amount ? amount.toLocaleString(CONFIG.CURRENCY_LOCALE) : ''}" />
+        <div class="field-label">참여자</div>
+        <div class="participant-toggle-list" id="participant-toggle-list">
+          ${ev.members.map(m => `<button type="button" class="participant-toggle-chip${participantIds.includes(m.id) ? ' active' : ''}" data-id="${m.id}">${m.emoji} ${escapeHtml(m.name)}</button>`).join('')}
+        </div>
+        <div class="participant-toggle-actions">
+          <button type="button" id="btn-select-all" class="btn btn-ghost">전체 선택</button>
+          <button type="button" id="btn-deselect-all" class="btn btn-ghost">전체 해제</button>
+        </div>
+        <details id="advanced-options">
+          <summary>금액 직접 조정</summary>
+          <div id="fixed-amount-rows">
+            ${ev.members.map(m => `
+              <div class="fixed-amount-row">
+                <span>${m.emoji} ${escapeHtml(m.name)}</span>
+                <input class="input input-fixed-amount" type="text" inputmode="numeric" data-id="${m.id}" placeholder="자동" value="${fixedAmounts[m.id] !== undefined ? fixedAmounts[m.id].toLocaleString(CONFIG.CURRENCY_LOCALE) : ''}" />
+              </div>
+            `).join('')}
+          </div>
+          <div id="fixed-preview" class="field-hint"></div>
+        </details>
+        <input id="input-item-memo" class="input" type="text" placeholder="메모 (선택)" value="${editing ? escapeAttr(editing.memo || '') : ''}" />
+        <div id="item-form-error" class="field-error"></div>
+        <div class="item-form-actions">
+          <button type="button" id="btn-save-item" class="btn btn-primary">${editing ? '수정 완료' : '항목 추가'}</button>
+          ${editing ? '<button type="button" id="btn-cancel-edit" class="btn btn-ghost">취소</button>' : ''}
+        </div>
+      </div>
+    `;
+  }
+
+  function readFixedAmounts() {
+    const result = {};
+    document.querySelectorAll('.input-fixed-amount').forEach(input => {
+      const value = parseAmountInput(input);
+      if (input.value.trim() !== '' && value > 0) {
+        result[input.dataset.id] = value;
+      }
+    });
+    return result;
+  }
+
+  function updateFixedPreview(ev) {
+    const previewEl = document.getElementById('fixed-preview');
+    if (!previewEl) return;
+    const amount = parseAmountInput(document.getElementById('input-item-amount'));
+    const fixedAmounts = readFixedAmounts();
+    const fixedSum = Object.values(fixedAmounts).reduce((s, v) => s + v, 0);
+    const participantIds = Array.from(selectedItemParticipants);
+    const remainderParticipants = participantIds.filter(id => fixedAmounts[id] === undefined);
+
+    if (fixedSum > amount) {
+      previewEl.textContent = '고정 금액 합이 총액을 초과합니다';
+      previewEl.classList.add('field-error');
+      return;
+    }
+    previewEl.classList.remove('field-error');
+
+    if (remainderParticipants.length === 0) {
+      previewEl.textContent = '';
+      return;
+    }
+    const remaining = amount - fixedSum;
+    const perPerson = Math.floor(remaining / remainderParticipants.length);
+    previewEl.textContent = `잔여 ₩${remaining.toLocaleString(CONFIG.CURRENCY_LOCALE)}를 ${remainderParticipants.length}명이 나눔 → 1인 ₩${perPerson.toLocaleString(CONFIG.CURRENCY_LOCALE)}`;
+  }
+
+  function renderItemCard(item, ev, index, total) {
+    const participantEmojis = ev.members.map(m => {
+      const active = item.participantIds.includes(m.id);
+      return `<span class="${active ? '' : 'item-participant-inactive'}">${m.emoji}</span>`;
+    }).join('');
+    const hasFixed = item.fixedAmounts && Object.keys(item.fixedAmounts).length > 0;
+    return `
+      <div class="item-card" data-id="${item.id}">
+        <div class="item-card-top">
+          <span class="item-emoji">${escapeHtml(item.emoji || '🧾')}</span>
+          <span class="item-name">${escapeHtml(item.name)}</span>
+          <span class="item-amount">₩${item.amount.toLocaleString(CONFIG.CURRENCY_LOCALE)}</span>
+        </div>
+        <div class="item-participants">${participantEmojis}${hasFixed ? renderBadge('직접 조정', 'primary') : ''}</div>
+        <div class="item-card-actions">
+          <button type="button" class="item-order-btn" data-id="${item.id}" data-direction="up" ${index === 0 ? 'disabled' : ''}>▲</button>
+          <button type="button" class="item-order-btn" data-id="${item.id}" data-direction="down" ${index === total - 1 ? 'disabled' : ''}>▼</button>
+          <button type="button" class="item-edit-btn btn btn-ghost" data-id="${item.id}">수정</button>
+          <button type="button" class="item-delete-btn" data-id="${item.id}">✕</button>
+        </div>
+      </div>
+    `;
+  }
+
+  function formatAmountInput(inputEl) {
+    const digits = inputEl.value.replace(/[^\d]/g, '');
+    inputEl.value = digits ? Number(digits).toLocaleString(CONFIG.CURRENCY_LOCALE) : '';
+  }
+
+  function parseAmountInput(inputEl) {
+    return Number(inputEl.value.replace(/[^\d]/g, '')) || 0;
+  }
+
   // ====== 라우트 등록 & 초기 실행 ======
   registerRoute('/', renderHome);
   registerRoute('/event/:id', renderEventSettings);
+  registerRoute('/event/:id/items', renderItemsEntry);
   window.addEventListener('DOMContentLoaded', router);
+  if (CONFIG.DEV_MODE) {
+    window.addEventListener('DOMContentLoaded', runRegressionTests);
+  }
 </script>
 </body>
 </html>
