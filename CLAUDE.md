@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project status
 
-No code exists yet. The repository currently contains only `오내총_PRD_v1.md`, the product requirements document. Implementation is expected to proceed stage-by-stage as defined in PRD §9. Always re-read `오내총_PRD_v1.md` before starting work — it is the single source of truth for behavior, data model, and constraints, and this file only summarizes the parts that shape how code should be structured.
+Stage 1 (skeleton: hash routing, CONFIG, event/member CRUD) is implemented in `index.html`. Stages 2-5 (settlement engine, receipts, Firebase sync, PWA polish) are not yet implemented — see `오내총_PRD_v1.md` §9 and `docs/superpowers/specs/` for design docs, and `docs/superpowers/plans/` for implementation plans.
 
 ## What this app is
 

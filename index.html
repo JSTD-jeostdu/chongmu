@@ -11,7 +11,7 @@
   html, body {
     margin: 0;
     padding: 0;
-    min-width: 390px;
+    min-width: 320px; /* 완료 기준 6: iPhone SE(375px)에서 가로 스크롤 발생 방지 (기존 390px는 375px에서 레이아웃 깨짐 유발) */
     font-family: 'Pretendard', -apple-system, sans-serif;
     background: var(--color-bg, #FFF9F2);
     color: #3A2E28;
@@ -265,6 +265,15 @@
   .emoji-btn.selected {
     border-color: var(--color-primary);
     background: #fff;
+  }
+
+  /* ====== 반응형 보강 ====== */
+  @media (min-width: 561px) {
+    #app { padding-left: 0; padding-right: 0; }
+  }
+  @media (max-width: 400px) {
+    .card-section { padding: 12px; }
+    .emoji-picker { grid-template-columns: repeat(5, 1fr); }
   }
 </style>
 </head>
