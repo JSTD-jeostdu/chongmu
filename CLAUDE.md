@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project status
 
-Stage 1 (skeleton: hash routing, CONFIG, event/member CRUD) is implemented in `index.html`. Stages 2-5 (settlement engine, receipts, Firebase sync, PWA polish) are not yet implemented — see `오내총_PRD_v1.md` §9 and `docs/superpowers/specs/` for design docs, and `docs/superpowers/plans/` for implementation plans.
+Stage 1 (skeleton: hash routing, CONFIG, event/member CRUD) and Stage 2 (item entry, settlement engine, result table) are implemented in `index.html`. Stages 3-5 (receipts, Firebase sync, PWA polish) are not yet implemented — see `오내총_PRD_v1.md` §9 and `docs/superpowers/specs/` for design docs, and `docs/superpowers/plans/` for implementation plans.
 
 ## What this app is
 
@@ -41,10 +41,11 @@ This is the trickiest part of the app; treat these as correctness requirements, 
 
 - Per item: participants with a **fixed assigned amount** pay exactly that; the remainder (`amount − sum(fixed amounts)`) splits evenly across the remaining participants.
 - Default rounding: **floor to the won**, and the leftover from flooring is absorbed into the 총무's own share (configurable in `CONFIG` to instead round participant shares up to nearest 10/100 won, with the excess deducted from the 총무's share instead).
-- **Mandatory integrity check on every save**: for every item, `sum(per-participant amounts) === item.amount` exactly (zero won of drift). If it fails, block the save and identify the offending item — don't silently correct it.
+- **Mandatory integrity check**: `calcSettlement(event)` asserts `sum(per-participant amounts) === item.amount` for every item and collects violations into `errors[]` (codes: `NO_PARTICIPANT`, `FIXED_EXCEEDS`, `FIXED_NOT_PARTICIPANT`, `INTEGRITY_MISMATCH`). Saving an item is always allowed even with errors present — only transitioning `status` to `'settled'` is blocked while `errors.length > 0` (shown as a warning banner + disabled 정산 완료 button on the result screen).
 - If fixed amounts for an item sum to more than the item's total, block save immediately at input time (don't wait for the aggregate check).
 - Edge cases with defined behavior (see PRD §8 table) — e.g., an item with zero participants is blocked at save, an item where only the 총무 participates is allowed (generates no charges), zero-won items are allowed (for record-keeping).
 - **Regression test requirement (Stage 2 completion criterion)**: reproduce the real spreadsheet seed data from the PRD and assert totals match exactly (₩199,100 / ₩274,000). Hardcode this seed data as a test fixture — don't skip this check.
+- **Implementation reference (Stage 2)**: the engine is the pure function `calcSettlement(event)` in `index.html`, calling `distributeRemainder`/`distributeFloor1` per item. `CONFIG.ROUNDING` selects `'floor1'` (default) | `'ceil10'` | `'ceil100'`. The floor-remainder ('끝전') is credited to the 총무 if they participate in that item, otherwise to the first participating member in `event.members` array order. `ceil10`/`ceil100` round non-owner shares up to the nearest 10/100 won and derive the 총무's share by subtraction; if that subtraction would go negative, the item falls back to `floor1` and logs a `console.warn` identifying the item.
 
 ## Implementation stages (PRD §9)
 
