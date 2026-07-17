@@ -350,6 +350,59 @@
   }
   .fixed-amount-row .input-fixed-amount { width: 120px; }
 
+  /* ====== 정산 결과 ====== */
+  .settlement-table-wrap {
+    overflow-x: auto;
+    border-radius: 16px;
+    background: #fff;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+  }
+  .settlement-table {
+    border-collapse: collapse;
+    width: 100%;
+    font-size: 13px;
+    white-space: nowrap;
+  }
+  .settlement-table th, .settlement-table td {
+    padding: 8px 10px;
+    text-align: right;
+    border-bottom: 1px solid #F0E8DC;
+  }
+  .settlement-table th:first-child,
+  .settlement-table td:first-child {
+    text-align: left;
+    position: sticky;
+    left: 0;
+    background: #fff;
+    z-index: 1;
+  }
+  .settlement-table tr.settlement-total-row td,
+  .settlement-table tr.settlement-total-row th {
+    background: #3D6FE0;
+    color: #fff;
+    font-weight: 700;
+  }
+  .settlement-table tr.settlement-total-row td:first-child {
+    background: #3D6FE0;
+  }
+  .settlement-cell-empty { color: #C9BCAC; }
+
+  .transfer-card { display: flex; flex-direction: column; gap: 4px; }
+  .transfer-row { display: flex; align-items: center; justify-content: space-between; padding: 6px 0; }
+  .transfer-owner-row { color: #4CAF50; font-weight: 700; }
+  .transfer-amount { font-weight: 700; }
+
+  .account-info-box {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: #F9F4EC;
+    border-radius: 10px;
+    padding: 10px 12px;
+    font-size: 14px;
+    gap: 8px;
+  }
+
   /* ====== 반응형 보강 ====== */
   @media (min-width: 561px) {
     #app { padding-left: 0; padding-right: 0; }
@@ -1418,10 +1471,115 @@
     return Number(inputEl.value.replace(/[^\d]/g, '')) || 0;
   }
 
+  // ====== 화면: 정산 결과 ======
+  function renderSettlementResult(params) {
+    const app = document.getElementById('app');
+    const ev = store.get(params.id);
+    if (!ev) { location.hash = '#/'; return; }
+
+    const result = calcSettlement(ev);
+    const sortedItems = ev.items.slice().sort((a, b) => a.order - b.order);
+    const owner = ev.members.find(m => m.isOwner);
+    const hasAccount = ev.account.bank || ev.account.number || ev.account.holder;
+
+    app.innerHTML = `
+      <header class="topbar">
+        <button type="button" class="btn-back" id="btn-back">←</button>
+        <h1>정산 결과</h1>
+      </header>
+      <main class="screen">
+        ${result.errors.length > 0 ? `<div class="card-section field-error">${result.errors.map(e => escapeHtml(e.message)).join('<br>')}</div>` : ''}
+        <div class="settlement-table-wrap">
+          <table class="settlement-table">
+            <thead>
+              <tr>
+                <th>항목</th>
+                ${ev.members.map(m => `<th>${m.emoji}</th>`).join('')}
+                <th>합계</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${sortedItems.map(item => `
+                <tr>
+                  <td>${item.emoji ? escapeHtml(item.emoji) + ' ' : ''}${escapeHtml(item.name)}</td>
+                  ${ev.members.map(m => {
+                    const value = result.matrix[item.id] ? result.matrix[item.id][m.id] : undefined;
+                    return `<td>${value === undefined ? '<span class="settlement-cell-empty">—</span>' : '₩' + value.toLocaleString(CONFIG.CURRENCY_LOCALE)}</td>`;
+                  }).join('')}
+                  <td>₩${result.itemTotals[item.id].toLocaleString(CONFIG.CURRENCY_LOCALE)}</td>
+                </tr>
+              `).join('')}
+              <tr class="settlement-total-row">
+                <th>총계</th>
+                ${ev.members.map(m => `<td>₩${(result.memberTotals[m.id] || 0).toLocaleString(CONFIG.CURRENCY_LOCALE)}</td>`).join('')}
+                <td>₩${result.grandTotal.toLocaleString(CONFIG.CURRENCY_LOCALE)}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <section class="card-section">
+          <h2>${owner ? escapeHtml(owner.name) : '총무'}에게 보낼 금액</h2>
+          <div class="transfer-card">
+            ${ev.members.map(m => {
+              if (owner && m.id === owner.id) {
+                return `<div class="transfer-row transfer-owner-row"><span>${m.emoji} ${escapeHtml(m.name)}</span><span>결제 완료 🧾</span></div>`;
+              }
+              return `<div class="transfer-row"><span>${m.emoji} ${escapeHtml(m.name)}</span><span class="transfer-amount">₩${(result.transfers[m.id] || 0).toLocaleString(CONFIG.CURRENCY_LOCALE)}</span></div>`;
+            }).join('')}
+          </div>
+          ${hasAccount ? `
+            <div class="account-info-box">
+              <span>${escapeHtml(ev.account.bank)} ${escapeHtml(ev.account.number)} ${escapeHtml(ev.account.holder)}</span>
+              <button type="button" id="btn-copy-account" class="btn btn-ghost">복사</button>
+            </div>
+          ` : ''}
+        </section>
+
+        <section class="card-section">
+          <button type="button" id="btn-settle" class="btn ${(ev.status === 'settled' || result.errors.length > 0) ? 'btn-disabled' : 'btn-primary'}" ${(ev.status === 'settled' || result.errors.length > 0) ? 'disabled' : ''}>
+            ${ev.status === 'settled' ? '정산 완료됨 ✓' : '정산 완료'}
+          </button>
+          ${result.errors.length > 0 ? '<div class="field-hint">오류가 있는 항목을 먼저 수정해주세요</div>' : ''}
+        </section>
+
+        <section class="card-section">
+          <h2>멤버별 영수증</h2>
+          <div class="member-list">
+            ${ev.members.map(m => `<button type="button" class="btn btn-ghost btn-receipt" data-id="${m.id}" style="width:100%">${m.emoji} ${escapeHtml(m.name)} 영수증 보기</button>`).join('')}
+          </div>
+        </section>
+      </main>
+    `;
+
+    document.getElementById('btn-back').addEventListener('click', () => { location.hash = `#/event/${ev.id}/items`; });
+
+    const copyBtn = document.getElementById('btn-copy-account');
+    if (copyBtn) {
+      copyBtn.addEventListener('click', () => {
+        const text = `${ev.account.bank} ${ev.account.number} ${ev.account.holder}`.trim();
+        navigator.clipboard.writeText(text).then(() => showToast('계좌 정보를 복사했어요'));
+      });
+    }
+
+    if (result.errors.length === 0 && ev.status !== 'settled') {
+      document.getElementById('btn-settle').addEventListener('click', () => {
+        ev.status = 'settled';
+        store.save(ev);
+        renderSettlementResult(params);
+      });
+    }
+
+    document.querySelectorAll('.btn-receipt').forEach(btn => {
+      btn.addEventListener('click', () => { showToast('Stage 3에서 열립니다'); });
+    });
+  }
+
   // ====== 라우트 등록 & 초기 실행 ======
   registerRoute('/', renderHome);
   registerRoute('/event/:id', renderEventSettings);
   registerRoute('/event/:id/items', renderItemsEntry);
+  registerRoute('/event/:id/result', renderSettlementResult);
   window.addEventListener('DOMContentLoaded', router);
   if (CONFIG.DEV_MODE) {
     window.addEventListener('DOMContentLoaded', runRegressionTests);
