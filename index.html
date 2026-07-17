@@ -2138,7 +2138,7 @@
         ${result.errors.length > 0 ? `<div class="card-section field-error">${result.errors.map(e => escapeHtml(e.message)).join('<br>')}</div>` : ''}
         ${renderSettlementTable(ev, result)}
         ${renderTransferCard(ev, result)}
-        ${currentUser && ev.ownerUid
+        ${currentUser && ev.shareId
           ? `<button type="button" id="btn-copy-share-link" class="btn btn-ghost">🔗 공유 링크 복사</button>`
           : `<div class="field-hint">로그인하면 공유 링크를 만들 수 있어요</div>`}
 
