@@ -4,6 +4,11 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>오늘은 내가 총무</title>
+<!-- 아래 4개 값은 manifest.json 및 CONFIG.APP_NAME/APP_SHORT/COLOR_BG/COLOR_PRIMARY와 반드시 일치시킬 것 -->
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icons/icon.svg">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<meta name="theme-color" content="#FF7A45">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css" />
 <style>
   /* ====== 리셋 & 레이아웃 ====== */
@@ -1664,6 +1669,7 @@
             <input id="input-number" class="input" type="text" placeholder="계좌번호" value="${escapeAttr(ev.account.number)}" />
             <input id="input-holder" class="input" type="text" placeholder="예금주" value="${escapeAttr(ev.account.holder)}" />
           </div>
+          <div class="field-hint">공유 링크와 영수증에 노출됩니다</div>
         </section>
 
         <section class="card-section">

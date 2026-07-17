@@ -1,0 +1,11 @@
+{
+  "name": "오늘은 내가 총무",
+  "short_name": "오.내.총",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#FFF9F2",
+  "theme_color": "#FF7A45",
+  "icons": [
+    { "src": "icons/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}
