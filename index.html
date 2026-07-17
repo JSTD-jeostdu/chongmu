@@ -1236,7 +1236,7 @@
       </div>
     `;
 
-    document.getElementById('btn-back').addEventListener('click', () => { location.hash = `#/event/${ev.id}`; });
+    document.getElementById('btn-back').addEventListener('click', () => { editingItemId = null; location.hash = `#/event/${ev.id}`; });
     document.getElementById('btn-goto-result').addEventListener('click', () => { location.hash = `#/event/${ev.id}/result`; });
 
     const initialParticipantIds = editing ? editing.participantIds : ev.members.map(m => m.id);
