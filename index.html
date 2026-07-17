@@ -784,6 +784,7 @@
   function scheduleCloudSave(event) {
     clearTimeout(cloudSaveTimers[event.id]);
     cloudSaveTimers[event.id] = setTimeout(() => {
+      if (!currentUser) return; // 디바운스 대기 중 로그아웃된 경우: payload 조립 자체를 건너뜀
       const payload = { ...event, ownerUid: currentUser.uid };
       firestore.collection('events').doc(event.id).set(payload, { merge: true })
         .catch(err => console.warn('클라우드 저장 실패(로컬엔 이미 반영됨):', err));
@@ -1401,18 +1402,21 @@
     const cloudOnlyEvent = { id: 'cloud-only-1', name: '클라우드 전용', ownerUid: 'test-uid', shareId: 'existing-share-id-0001', members: [], items: [] };
     const localOnlyEvent = createEvent('로컬 전용', '2026-01-01');
     addMember(localOnlyEvent, '총무');
+    // id가 클라우드 문서와 충돌하는 로컬 객체 — cloudIds 필터가 깨지면(전체를 업로드해버리면) 이 케이스가 클라우드를 덮어써야 정상적으로 감지된다.
+    const localCollisionEvent = { id: 'cloud-only-1', name: '로컬에서 조작된 버전', ownerUid: 'test-uid', shareId: 'local-share-id-0001', members: [], items: [] };
 
     const savedFirestore = firestore, savedCurrentUser = currentUser, savedFirebaseReady = firebaseReady;
+    const savedStorageRaw = localStorage.getItem(CONFIG.STORAGE_KEY); // 실제 로컬 저장 데이터를 보존(테스트가 store._writeAllLocal을 통해 이 키를 덮어씀)
     const fakeFs = makeFakeFirestore([cloudOnlyEvent]);
     firestore = fakeFs;
     firebaseReady = true;
-    eventsCache.push(localOnlyEvent);
+    eventsCache.push(localOnlyEvent, localCollisionEvent);
     localStorage.removeItem(CONFIG.MIGRATION_FLAG_PREFIX + 'test-uid');
 
     await syncFromCloud({ uid: 'test-uid' });
 
     assert('syncFromCloud: 로컬 전용 이벤트가 클라우드로 업로드됨', fakeFs._docs.has(localOnlyEvent.id));
-    assert('syncFromCloud: 기존 클라우드 이벤트는 덮어쓰이지 않고 그대로 유지됨', fakeFs._docs.get('cloud-only-1').name === '클라우드 전용');
+    assert('syncFromCloud: id가 겹치는 기존 클라우드 이벤트는 로컬 값으로 덮어쓰이지 않고 그대로 유지됨', fakeFs._docs.get('cloud-only-1').name === '클라우드 전용');
     assert('syncFromCloud: 병합 후 캐시에 두 이벤트 모두 포함', store.get('cloud-only-1') !== null && store.get(localOnlyEvent.id) !== null);
     assert('syncFromCloud: 마이그레이션 플래그 기록됨', localStorage.getItem(CONFIG.MIGRATION_FLAG_PREFIX + 'test-uid') === '1');
 
@@ -1425,7 +1429,14 @@
     firestore = savedFirestore;
     currentUser = savedCurrentUser;
     firebaseReady = savedFirebaseReady;
-    loadLocalCache(); // 테스트로 오염된 eventsCache를 실제 localStorage 상태로 복구
+    // syncFromCloud가 store._writeAllLocal()을 통해 CONFIG.STORAGE_KEY를 테스트 픽스처로 덮어썼으므로,
+    // eventsCache를 다시 읽기 전에 실제 로컬 데이터를 원상복구해야 한다(그렇지 않으면 loadLocalCache()가 오염된 값을 그대로 읽어들인다).
+    if (savedStorageRaw === null) {
+      localStorage.removeItem(CONFIG.STORAGE_KEY);
+    } else {
+      localStorage.setItem(CONFIG.STORAGE_KEY, savedStorageRaw);
+    }
+    loadLocalCache(); // 이제 실제 localStorage 상태(위에서 복구됨)를 eventsCache에 반영
 
     // ---- 전 테스트 공통: Σ분배액 === amount ----
     [evA, evB, evC, evD, evE].forEach(ev => {
