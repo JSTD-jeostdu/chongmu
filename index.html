@@ -1543,6 +1543,16 @@
   window.addEventListener('hashchange', router);
 
   // ====== 화면: 홈 (모임 목록) ======
+  function renderAuthButton() {
+    if (!firebaseReady) {
+      return `<button type="button" class="btn btn-ghost" disabled title="Firebase 설정이 필요해요">로그인</button>`;
+    }
+    if (currentUser) {
+      return `<button type="button" id="btn-logout" class="btn btn-ghost">${escapeHtml(currentUser.displayName || '사용자')} · 로그아웃</button>`;
+    }
+    return `<button type="button" id="btn-login" class="btn btn-ghost">Google로 로그인</button>`;
+  }
+
   function renderHome() {
     const app = document.getElementById('app');
     const events = store.getAll().slice().sort((a, b) => b.date.localeCompare(a.date));
@@ -1550,6 +1560,7 @@
     app.innerHTML = `
       <header class="topbar">
         <h1>${escapeHtml(CONFIG.APP_SHORT)}</h1>
+        ${renderAuthButton()}
       </header>
       <main class="screen">
         ${events.length === 0 ? renderEmptyState() : `<div class="event-list">${events.map(renderEventCard).join('')}</div>`}
@@ -1570,6 +1581,11 @@
         onDeleteEvent(btn.dataset.id);
       });
     });
+
+    const loginBtn = document.getElementById('btn-login');
+    if (loginBtn) loginBtn.addEventListener('click', signInWithGoogle);
+    const logoutBtn = document.getElementById('btn-logout');
+    if (logoutBtn) logoutBtn.addEventListener('click', signOutUser);
   }
 
   function renderEmptyState() {
