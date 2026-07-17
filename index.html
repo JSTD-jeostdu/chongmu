@@ -618,6 +618,9 @@
 <div id="app"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore-compat.js"></script>
 <script>
   // ====== CONFIG ======
   const CONFIG = {
@@ -654,6 +657,17 @@
       '이 영수증은 세금 공제와 무관합니다',
     ],
     PHOTO_NOTICE_KEY: 'onct_photo_notice_seen',
+    FIREBASE: {
+      // Firebase 콘솔 > 프로젝트 설정 > 웹 앱에서 발급받은 값을 채워주세요.
+      // apiKey가 비어있으면 앱 전체가 로컬 전용 모드로 동작합니다(initFirebase 참고).
+      apiKey: '',
+      authDomain: '',
+      projectId: '',
+      storageBucket: '',
+      messagingSenderId: '',
+      appId: '',
+    },
+    MIGRATION_FLAG_PREFIX: 'onct_migrated_',
   };
 
   // CONFIG 색상값을 CSS 커스텀 프로퍼티로 주입 (CSS에 색상 하드코딩 금지)
@@ -665,6 +679,42 @@
   receiptFontLink.rel = 'stylesheet';
   receiptFontLink.href = CONFIG.RECEIPT_FONT_URL;
   document.head.appendChild(receiptFontLink);
+
+  // ====== FIREBASE 초기화 & 인증 (Stage 4) ======
+  let auth = null;
+  let firestore = null;
+  let currentUser = null;    // firebase.User | null
+  let firebaseReady = false; // CONFIG.FIREBASE.apiKey가 채워져 있고 initializeApp이 성공했는지
+
+  function initFirebase() {
+    if (!CONFIG.FIREBASE.apiKey) return false; // 플레이스홀더 상태 — 조용히 로컬 전용 모드로 스킵
+    try {
+      firebase.initializeApp(CONFIG.FIREBASE);
+      auth = firebase.auth();
+      firestore = firebase.firestore();
+      firestore.enablePersistence().catch(() => {}); // 다중 탭 등으로 실패해도 무시
+      firebaseReady = true;
+      return true;
+    } catch (err) {
+      console.warn('Firebase 초기화 실패, 로컬 모드로 동작합니다:', err);
+      return false;
+    }
+  }
+
+  function signInWithGoogle() {
+    if (!firebaseReady) return;
+    auth.signInWithPopup(new firebase.auth.GoogleAuthProvider())
+      .catch(err => { if (err.code !== 'auth/popup-closed-by-user') showToast('로그인에 실패했어요'); });
+  }
+
+  function signOutUser() {
+    if (!firebaseReady) return;
+    auth.signOut();
+  }
+
+  function generateShareId() {
+    return crypto.randomUUID().replace(/-/g, '').slice(0, 20);
+  }
 
   // ====== 유틸 ======
   function escapeHtml(str) {
