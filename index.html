@@ -2349,16 +2349,22 @@
     const originalMemberId = activeTab ? activeTab.dataset.id : ev.members[0].id;
     showToast(`영수증 저장 중... (0/${ev.members.length})`);
     const app = document.getElementById('app');
-    for (let i = 0; i < ev.members.length; i++) {
-      const member = ev.members[i];
-      const result = calcSettlement(ev);
-      const stage = app.querySelector('.receipt-stage');
-      if (stage) { stage.innerHTML = renderReceiptDom(ev, member, result); }
-      await new Promise(r => setTimeout(r, 150));
-      await saveReceiptImage(ev, member);
+    try {
+      for (let i = 0; i < ev.members.length; i++) {
+        const member = ev.members[i];
+        const result = calcSettlement(ev);
+        const stage = app.querySelector('.receipt-stage');
+        if (stage) { stage.innerHTML = renderReceiptDom(ev, member, result); }
+        await new Promise(r => setTimeout(r, 150));
+        await saveReceiptImage(ev, member);
+      }
+      showToast('전체 영수증 저장을 완료했어요');
+    } catch (err) {
+      console.warn('saveAllReceipts 중 오류 발생:', err);
+      showToast('전체 저장 중 오류가 발생했어요');
+    } finally {
+      renderReceiptView({ id: ev.id, memberId: originalMemberId });
     }
-    renderReceiptView({ id: ev.id, memberId: originalMemberId });
-    showToast('전체 영수증 저장을 완료했어요');
   }
 
   // ====== 라우트 등록 & 초기 실행 ======
