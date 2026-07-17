@@ -409,6 +409,142 @@
     gap: 8px;
   }
 
+  /* ====== 영수증 화면 ====== */
+  .receipt-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+  .receipt-member-tabs {
+    display: flex;
+    gap: 6px;
+    overflow-x: auto;
+    flex: 1;
+    padding-bottom: 4px;
+  }
+  .receipt-tab {
+    flex-shrink: 0;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    border: 2px solid transparent;
+    background: #F0E8DC;
+    font-size: 18px;
+    cursor: pointer;
+  }
+  .receipt-tab.active {
+    border-color: var(--color-primary, #FF7A45);
+    background: #fff;
+  }
+  .receipt-stage {
+    background: #2B2420;
+    border-radius: 16px;
+    padding: 24px 12px;
+    display: flex;
+    justify-content: center;
+    overflow-x: auto;
+  }
+  .receipt {
+    width: 360px;
+    flex-shrink: 0;
+    background: #fdfdf8;
+    color: #2A231C;
+    font-family: 'Galmuri11', monospace;
+    box-shadow: 0 12px 40px rgba(0,0,0,0.5);
+  }
+  .receipt-body { padding: 16px 20px; }
+  .receipt-tear {
+    height: 10px;
+    background-color: #fdfdf8;
+    background-image:
+      linear-gradient(135deg, #2B2420 8px, transparent 0),
+      linear-gradient(225deg, #2B2420 8px, transparent 0);
+    background-size: 16px 16px;
+    background-position: 0 0;
+    background-repeat: repeat-x;
+  }
+  .receipt-tear-bottom { transform: scaleY(-1); }
+  .receipt-shop { text-align: center; }
+  .receipt-shop-name { font-size: 18px; font-weight: 700; }
+  .receipt-shop-branch, .receipt-shop-owner { font-size: 12px; margin-top: 2px; }
+  .receipt-divider { border-top: 1px dashed #B8AA96; margin: 10px 0; }
+  .receipt-divider-bold { border-top: 2px dashed #2A231C; }
+  .receipt-meta { font-size: 12px; display: flex; flex-direction: column; gap: 2px; }
+  .receipt-photo-slot {
+    margin: 4px 0;
+    border-radius: 4px;
+    overflow: hidden;
+    cursor: pointer;
+  }
+  .receipt-photo-img { width: 100%; display: block; }
+  .receipt-photo-empty {
+    border: 2px dashed #B8AA96;
+    border-radius: 4px;
+    padding: 32px 0;
+    text-align: center;
+    font-size: 13px;
+    color: #8A7A66;
+  }
+  .receipt-item-row {
+    display: flex;
+    align-items: baseline;
+    gap: 4px;
+    font-size: 13px;
+    padding: 3px 0;
+  }
+  .receipt-item-name { white-space: nowrap; }
+  .receipt-item-leader {
+    flex: 1;
+    border-bottom: 1px dotted #B8AA96;
+    margin-bottom: 3px;
+  }
+  .receipt-item-amount {
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+  .receipt-footnote { font-size: 11px; color: #8A7A66; margin-top: 4px; }
+  .receipt-total { text-align: center; }
+  .receipt-total-row {
+    display: flex;
+    justify-content: space-between;
+    font-size: 18px;
+    font-weight: 700;
+  }
+  .receipt-stamp {
+    display: inline-block;
+    border: 3px solid #D64545;
+    color: #D64545;
+    padding: 6px 16px;
+    font-size: 16px;
+    font-weight: 700;
+    transform: rotate(-8deg);
+    margin: 8px auto;
+  }
+  .receipt-account {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 12px;
+    gap: 8px;
+  }
+  .receipt-barcode { text-align: center; margin-top: 12px; }
+  .receipt-barcode-svg { max-width: 100%; }
+  .receipt-barcode-id { font-size: 10px; color: #8A7A66; margin-top: 2px; }
+  .receipt-ment {
+    text-align: center;
+    font-size: 11px;
+    color: #8A7A66;
+    margin-top: 10px;
+    line-height: 1.6;
+  }
+  .receipt-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 12px;
+  }
+  .receipt-actions .btn { flex: 1; }
+
   /* ====== 반응형 보강 ====== */
   @media (min-width: 561px) {
     #app { padding-left: 0; padding-right: 0; }
@@ -1144,6 +1280,10 @@
     if (resultMatch && routes['/event/:id/result']) {
       return { render: routes['/event/:id/result'], params: { id: resultMatch[1] } };
     }
+    const receiptMatch = hash.match(/^\/event\/([^/]+)\/receipt\/([^/]+)$/);
+    if (receiptMatch && routes['/event/:id/receipt/:memberId']) {
+      return { render: routes['/event/:id/receipt/:memberId'], params: { id: receiptMatch[1], memberId: receiptMatch[2] } };
+    }
     return null;
   }
 
@@ -1754,8 +1894,160 @@
     }
 
     document.querySelectorAll('.btn-receipt').forEach(btn => {
-      btn.addEventListener('click', () => { showToast('Stage 3에서 열립니다'); });
+      btn.addEventListener('click', () => { location.hash = `#/event/${ev.id}/receipt/${btn.dataset.id}`; });
     });
+  }
+
+  // ====== 화면: 영수증 ======
+  function renderBarcodeSvg(seed) {
+    const barCount = 40;
+    let bars = '';
+    let x = 0;
+    let s = seed;
+    for (let i = 0; i < barCount; i++) {
+      s = (s * 1103515245 + 12345) >>> 0; // 결정론적 의사난수 (선형합동법)
+      const width = 1 + (s % 3);
+      if ((s >> 8) % 2 === 0) {
+        bars += `<rect x="${x}" y="0" width="${width}" height="32" fill="#2A231C" />`;
+      }
+      x += width + 1;
+    }
+    return `<svg class="receipt-barcode-svg" width="${x}" height="32" viewBox="0 0 ${x} 32">${bars}</svg>`;
+  }
+
+  function renderReceiptDom(ev, member, result) {
+    const owner = ev.members.find(m => m.isOwner);
+    const isOwner = member.isOwner === true;
+    const memberIndex = ev.members.indexOf(member);
+    const receiptNo = `${ev.id.slice(0, 8).toUpperCase()}-${String(memberIndex + 1).padStart(2, '0')}`;
+    const issuedAt = new Date().toLocaleTimeString(CONFIG.DATE_LOCALE, { hour: '2-digit', minute: '2-digit' });
+    const seed = hashString(ev.id + member.id);
+
+    const items = ev.items
+      .filter(item => result.matrix[item.id] && result.matrix[item.id][member.id] !== undefined)
+      .slice()
+      .sort((a, b) => a.order - b.order);
+    const hasFixed = items.some(item => item.fixedAmounts && item.fixedAmounts[member.id] !== undefined);
+
+    const photoDataUrl = photoStore.get(ev.id, member.id);
+    const hasAccount = !isOwner && (ev.account.bank || ev.account.number || ev.account.holder);
+    const ment = CONFIG.RECEIPT_MENTS[seed % CONFIG.RECEIPT_MENTS.length];
+
+    return `
+      <div class="receipt" id="receipt-capture" data-member-id="${member.id}">
+        <div class="receipt-tear receipt-tear-top"></div>
+        <div class="receipt-body">
+          <div class="receipt-shop">
+            <div class="receipt-shop-name">${escapeHtml(CONFIG.APP_NAME)}</div>
+            <div class="receipt-shop-branch">${escapeHtml(ev.name)}점</div>
+            <div class="receipt-shop-owner">대표: ${owner ? escapeHtml(owner.name) : '-'}</div>
+          </div>
+          <div class="receipt-divider"></div>
+          <div class="receipt-meta">
+            <div>${escapeHtml(ev.date)}</div>
+            <div>발행 ${issuedAt}</div>
+            <div>NO. ${receiptNo}</div>
+          </div>
+          <div class="receipt-divider"></div>
+          <div class="receipt-photo-slot" id="receipt-photo-slot" data-id="${member.id}">
+            ${photoDataUrl
+              ? `<img src="${photoDataUrl}" alt="하이라이트 사진" class="receipt-photo-img" />`
+              : `<div class="receipt-photo-empty">📷 하이라이트 사진 추가</div>`}
+          </div>
+          <div class="receipt-divider"></div>
+          <div class="receipt-items">
+            ${items.map(item => {
+              const amount = result.matrix[item.id][member.id];
+              const fixed = item.fixedAmounts && item.fixedAmounts[member.id] !== undefined;
+              return `
+                <div class="receipt-item-row">
+                  <span class="receipt-item-name">${item.emoji ? escapeHtml(item.emoji) + ' ' : ''}${escapeHtml(item.name)}</span>
+                  <span class="receipt-item-leader"></span>
+                  <span class="receipt-item-amount">₩${amount.toLocaleString(CONFIG.CURRENCY_LOCALE)}${fixed ? '*' : ''}</span>
+                </div>
+              `;
+            }).join('')}
+            ${hasFixed ? '<div class="receipt-footnote">* 직접 조정된 금액</div>' : ''}
+          </div>
+          <div class="receipt-divider receipt-divider-bold"></div>
+          <div class="receipt-total">
+            ${isOwner
+              ? `<div class="receipt-stamp">결제 완료</div>`
+              : `<div class="receipt-total-row"><span>합계</span><span>₩${(result.transfers[member.id] || 0).toLocaleString(CONFIG.CURRENCY_LOCALE)}</span></div>`}
+          </div>
+          ${hasAccount ? `
+            <div class="receipt-divider"></div>
+            <div class="receipt-account">
+              <span>${escapeHtml(ev.account.bank)} ${escapeHtml(ev.account.number)} (${escapeHtml(ev.account.holder)})</span>
+              <button type="button" class="btn btn-ghost" id="btn-receipt-copy-account" data-no-capture>복사</button>
+            </div>
+          ` : ''}
+          <div class="receipt-barcode">
+            ${renderBarcodeSvg(seed)}
+            <div class="receipt-barcode-id">${ev.id.slice(0, 12)}</div>
+          </div>
+          <div class="receipt-ment">
+            <div>${escapeHtml(ment)}</div>
+            <div>⁂ ${escapeHtml(CONFIG.APP_SHORT)} ⁂</div>
+          </div>
+        </div>
+        <div class="receipt-tear receipt-tear-bottom"></div>
+      </div>
+    `;
+  }
+
+  function renderReceiptView(params) {
+    const app = document.getElementById('app');
+    const ev = store.get(params.id);
+    if (!ev) { location.hash = '#/'; return; }
+    if (ev.members.length === 0) { location.hash = `#/event/${ev.id}/result`; return; }
+
+    let member = ev.members.find(m => m.id === params.memberId);
+    if (!member) { member = ev.members[0]; }
+
+    const result = calcSettlement(ev);
+
+    app.innerHTML = `
+      <header class="topbar">
+        <button type="button" class="btn-back" id="btn-back">←</button>
+        <h1>영수증</h1>
+      </header>
+      <main class="screen">
+        <div class="receipt-toolbar">
+          <div class="receipt-member-tabs" id="receipt-member-tabs">
+            ${ev.members.map(m => `<button type="button" class="receipt-tab${m.id === member.id ? ' active' : ''}" data-id="${m.id}">${m.emoji}</button>`).join('')}
+          </div>
+          <button type="button" id="btn-photo-manager" class="btn btn-ghost" title="사진 관리">🖼</button>
+          <button type="button" id="btn-save-all" class="btn btn-ghost" title="전체 저장">⬇전체</button>
+        </div>
+        <div class="receipt-stage">
+          ${renderReceiptDom(ev, member, result)}
+        </div>
+        <div class="receipt-actions">
+          <button type="button" id="btn-save-receipt" class="btn btn-primary">이미지 저장</button>
+          <button type="button" id="btn-share-receipt" class="btn btn-ghost">이미지 공유</button>
+        </div>
+      </main>
+    `;
+
+    document.getElementById('btn-back').addEventListener('click', () => { location.hash = `#/event/${ev.id}/result`; });
+
+    document.querySelectorAll('.receipt-tab').forEach(tab => {
+      tab.addEventListener('click', () => { location.hash = `#/event/${ev.id}/receipt/${tab.dataset.id}`; });
+    });
+
+    const photoSlot = document.getElementById('receipt-photo-slot');
+    if (photoSlot) {
+      photoSlot.addEventListener('click', () => { showToast('Stage 3 후속 태스크에서 사진 첨부가 연결됩니다'); });
+    }
+    document.getElementById('btn-photo-manager').addEventListener('click', () => { showToast('Stage 3 후속 태스크에서 연결됩니다'); });
+    document.getElementById('btn-save-all').addEventListener('click', () => { showToast('Stage 3 후속 태스크에서 연결됩니다'); });
+    document.getElementById('btn-save-receipt').addEventListener('click', () => { showToast('Stage 3 후속 태스크에서 연결됩니다'); });
+    document.getElementById('btn-share-receipt').addEventListener('click', () => { showToast('Stage 3 후속 태스크에서 연결됩니다'); });
+    const copyBtn = document.getElementById('btn-receipt-copy-account');
+    if (copyBtn) {
+      copyBtn.addEventListener('click', () => { showToast('Stage 3 후속 태스크에서 연결됩니다'); });
+    }
   }
 
   // ====== 라우트 등록 & 초기 실행 ======
@@ -1763,6 +2055,7 @@
   registerRoute('/event/:id', renderEventSettings);
   registerRoute('/event/:id/items', renderItemsEntry);
   registerRoute('/event/:id/result', renderSettlementResult);
+  registerRoute('/event/:id/receipt/:memberId', renderReceiptView);
   window.addEventListener('DOMContentLoaded', router);
   if (CONFIG.DEV_MODE) {
     window.addEventListener('DOMContentLoaded', runRegressionTests);
