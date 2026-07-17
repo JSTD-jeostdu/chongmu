@@ -582,6 +582,26 @@
   .photo-filter-option.active .photo-filter-thumb-wrap { border-color: var(--color-primary, #FF7A45); }
   .photo-filter-thumb { width: 100%; height: 100%; object-fit: cover; }
 
+  .photo-usage-hint { font-size: 12px; color: #8A7A66; }
+  .photo-manager-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+  }
+  .photo-manager-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+  }
+  .photo-manager-item img {
+    width: 100%;
+    aspect-ratio: 1;
+    object-fit: cover;
+    border-radius: 8px;
+  }
+
   /* ====== 반응형 보강 ====== */
   @media (min-width: 561px) {
     #app { padding-left: 0; padding-right: 0; }
@@ -1408,6 +1428,7 @@
     const ok = await confirmDialog(`"${ev.name}" 모임을 삭제할까요?`);
     if (ok) {
       store.remove(id);
+      photoStore.removeByEvent(id);
       renderHome();
     }
   }
@@ -2077,7 +2098,7 @@
     if (photoSlot) {
       photoSlot.addEventListener('click', () => { openPhotoAttachModal(ev.id, member.id); });
     }
-    document.getElementById('btn-photo-manager').addEventListener('click', () => { showToast('Stage 3 후속 태스크에서 연결됩니다'); });
+    document.getElementById('btn-photo-manager').addEventListener('click', () => { openPhotoManagerSheet(ev.id); });
     document.getElementById('btn-save-all').addEventListener('click', () => { showToast('Stage 3 후속 태스크에서 연결됩니다'); });
     document.getElementById('btn-save-receipt').addEventListener('click', () => { showToast('Stage 3 후속 태스크에서 연결됩니다'); });
     document.getElementById('btn-share-receipt').addEventListener('click', () => { showToast('Stage 3 후속 태스크에서 연결됩니다'); });
@@ -2214,6 +2235,63 @@
       closeModal();
       renderReceiptView({ id: eventId, memberId });
     });
+  }
+
+  function openPhotoManagerSheet(eventId) {
+    const ev = store.get(eventId);
+    const overlay = document.createElement('div');
+    overlay.className = 'sheet-overlay';
+    const photos = photoStore.listByEvent(eventId);
+    overlay.innerHTML = `
+      <div class="sheet-box">
+        <h2>사진 관리</h2>
+        <div class="photo-usage-hint">전체 사진 용량: 약 ${photoStore.usage()}KB</div>
+        <div class="photo-manager-grid" id="photo-manager-grid">
+          ${photos.length === 0 ? '<div class="field-hint">첨부된 사진이 없어요</div>' : photos.map(p => {
+            const m = ev ? ev.members.find(mm => mm.id === p.memberId) : null;
+            return `
+              <div class="photo-manager-item" data-member-id="${p.memberId}">
+                <img src="${p.dataUrl}" alt="${m ? escapeAttr(m.name) : ''}" />
+                <span>${m ? escapeHtml(m.name) : '(삭제된 멤버)'}</span>
+                <button type="button" class="btn btn-danger photo-manager-remove" data-member-id="${p.memberId}">삭제</button>
+              </div>
+            `;
+          }).join('')}
+        </div>
+        ${photos.length > 0 ? '<button type="button" id="btn-remove-all-photos" class="btn btn-danger" style="width:100%">이 모임 사진 전체 삭제</button>' : ''}
+        <div class="sheet-actions">
+          <button type="button" id="btn-photo-manager-close" class="btn btn-ghost">닫기</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+
+    function close() { overlay.remove(); }
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+    document.getElementById('btn-photo-manager-close').addEventListener('click', close);
+
+    overlay.querySelectorAll('.photo-manager-remove').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const ok = await confirmDialog('이 사진을 삭제할까요?');
+        if (ok) {
+          photoStore.remove(eventId, btn.dataset.memberId);
+          close();
+          openPhotoManagerSheet(eventId);
+        }
+      });
+    });
+
+    const removeAllBtn = document.getElementById('btn-remove-all-photos');
+    if (removeAllBtn) {
+      removeAllBtn.addEventListener('click', async () => {
+        const ok = await confirmDialog('이 모임의 모든 사진을 삭제할까요?');
+        if (ok) {
+          photoStore.removeByEvent(eventId);
+          close();
+          showToast('사진을 모두 삭제했어요');
+        }
+      });
+    }
   }
 
   // ====== 라우트 등록 & 초기 실행 ======
