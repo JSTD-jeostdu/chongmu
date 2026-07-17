@@ -445,11 +445,32 @@
     ITEM_EMOJIS: ['🍽️','☕','🍦','📷','🚗','🎮','🎫','🛍️','🍺','🧾'],
     CURRENCY_LOCALE: 'ko-KR',
     DEV_MODE: false,
+    PHOTOS_KEY: 'onct_photos',
+    RECEIPT_WIDTH: 360,
+    RECEIPT_SCALE: 2,
+    PHOTO_MAX_EDGE: 800,
+    PHOTO_QUALITY: 0.7,
+    RECEIPT_FONT_URL: 'https://cdn.jsdelivr.net/npm/galmuri/dist/galmuri.css',
+    RECEIPT_MENTS: [
+      '오늘도 함께해줘서 고마워요',
+      '교환·환불은 다음 모임에서만 가능합니다',
+      '본 영수증은 추억 보증서를 겸합니다',
+      '재방문 시 웃음 10% 추가 적립',
+      '분실 시 총무가 슬퍼합니다',
+      '이 영수증은 세금 공제와 무관합니다',
+    ],
+    PHOTO_NOTICE_KEY: 'onct_photo_notice_seen',
   };
 
   // CONFIG 색상값을 CSS 커스텀 프로퍼티로 주입 (CSS에 색상 하드코딩 금지)
   document.documentElement.style.setProperty('--color-primary', CONFIG.COLOR_PRIMARY);
   document.documentElement.style.setProperty('--color-bg', CONFIG.COLOR_BG);
+
+  // 영수증 도트 폰트 동적 로드 (CONFIG.RECEIPT_FONT_URL을 단일 출처로 유지)
+  const receiptFontLink = document.createElement('link');
+  receiptFontLink.rel = 'stylesheet';
+  receiptFontLink.href = CONFIG.RECEIPT_FONT_URL;
+  document.head.appendChild(receiptFontLink);
 
   // ====== 유틸 ======
   function escapeHtml(str) {
@@ -460,6 +481,16 @@
 
   function escapeAttr(str) {
     return String(str).replace(/"/g, '&quot;');
+  }
+
+  // 결정론적 해시 (FNV-1a 32bit 변형) — 영수증 바코드 모양·랜덤 멘트 선택 시드로 사용
+  function hashString(str) {
+    let hash = 0x811c9dc5;
+    for (let i = 0; i < str.length; i++) {
+      hash ^= str.charCodeAt(i);
+      hash = Math.imul(hash, 0x01000193);
+    }
+    return hash >>> 0;
   }
 
   // ====== STORE (localStorage 추상화, Stage 4에서 Firestore로 교체 예정) ======
@@ -492,6 +523,48 @@
     remove(id) {
       const events = this._readAll().filter(e => e.id !== id);
       this._writeAll(events);
+    },
+  };
+
+  // ====== PHOTO STORE (사진 전용 localStorage 추상화, event 데이터와 분리) ======
+  const photoStore = {
+    _readAll() {
+      const raw = localStorage.getItem(CONFIG.PHOTOS_KEY);
+      return raw ? JSON.parse(raw) : {};
+    },
+    _writeAll(map) {
+      localStorage.setItem(CONFIG.PHOTOS_KEY, JSON.stringify(map));
+    },
+    _key(eventId, memberId) {
+      return `${eventId}:${memberId}`;
+    },
+    get(eventId, memberId) {
+      return this._readAll()[this._key(eventId, memberId)] || null;
+    },
+    set(eventId, memberId, dataUrl) {
+      const map = this._readAll();
+      map[this._key(eventId, memberId)] = dataUrl;
+      this._writeAll(map); // QuotaExceededError는 호출부에서 처리
+    },
+    remove(eventId, memberId) {
+      const map = this._readAll();
+      delete map[this._key(eventId, memberId)];
+      this._writeAll(map);
+    },
+    removeByEvent(eventId) {
+      const map = this._readAll();
+      Object.keys(map).forEach(k => { if (k.startsWith(`${eventId}:`)) delete map[k]; });
+      this._writeAll(map);
+    },
+    listByEvent(eventId) {
+      const map = this._readAll();
+      return Object.keys(map)
+        .filter(k => k.startsWith(`${eventId}:`))
+        .map(k => ({ key: k, memberId: k.split(':')[1], dataUrl: map[k] }));
+    },
+    usage() {
+      const raw = localStorage.getItem(CONFIG.PHOTOS_KEY) || '';
+      return Math.round(raw.length / 1024); // KB 근사치
     },
   };
 
@@ -884,6 +957,26 @@
     assert('ceil100 폴백: 총무 34원(floor1로 폴백)', resultI.matrix[itemI][ownerI] === 34);
     assert('ceil100 폴백: B/C 각 33원', resultI.matrix[itemI][bI] === 33 && resultI.matrix[itemI][cI] === 33);
     CONFIG.ROUNDING = originalRounding;
+
+    // ---- hashString: 결정론적 해시 ----
+    assert('hashString: 같은 입력 → 같은 값', hashString('오내총') === hashString('오내총'));
+    assert('hashString: 다른 입력 → 다른 값', hashString('오내총') !== hashString('오내총2'));
+    assert('hashString: 32비트 부호없는 정수 반환', Number.isInteger(hashString('test')) && hashString('test') >= 0);
+
+    // ---- photoStore CRUD ----
+    const PHOTO_TEST_EVENT = '__test_event__';
+    const testDataUrl = 'data:image/jpeg;base64,AAAA';
+    photoStore.set(PHOTO_TEST_EVENT, 'm1', testDataUrl);
+    assert('photoStore: set 후 get 동일값', photoStore.get(PHOTO_TEST_EVENT, 'm1') === testDataUrl);
+    assert('photoStore: 없는 키는 null', photoStore.get(PHOTO_TEST_EVENT, 'm2') === null);
+    photoStore.set(PHOTO_TEST_EVENT, 'm2', testDataUrl);
+    assert('photoStore: listByEvent 2건', photoStore.listByEvent(PHOTO_TEST_EVENT).length === 2);
+    photoStore.remove(PHOTO_TEST_EVENT, 'm1');
+    assert('photoStore: remove 후 get null', photoStore.get(PHOTO_TEST_EVENT, 'm1') === null);
+    assert('photoStore: remove 후 listByEvent 1건', photoStore.listByEvent(PHOTO_TEST_EVENT).length === 1);
+    photoStore.removeByEvent(PHOTO_TEST_EVENT);
+    assert('photoStore: removeByEvent 후 listByEvent 0건', photoStore.listByEvent(PHOTO_TEST_EVENT).length === 0);
+    assert('photoStore: usage()는 숫자 반환', typeof photoStore.usage() === 'number');
 
     // ---- 전 테스트 공통: Σ분배액 === amount ----
     [evA, evB, evC, evD, evE].forEach(ev => {
