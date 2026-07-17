@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project status
 
-Stage 1 (skeleton: hash routing, CONFIG, event/member CRUD), Stage 2 (item entry, settlement engine, result table), and Stage 3 (감성 영수증: photo attach, dot-font receipt DOM, html2canvas capture/share) are implemented in `index.html`. Stages 4-5 (Firebase sync, PWA polish) are not yet implemented — see `오내총_PRD_v1.md` §9 and `docs/superpowers/specs/` for design docs, and `docs/superpowers/plans/` for implementation plans.
+Stage 1 (skeleton: hash routing, CONFIG, event/member CRUD), Stage 2 (item entry, settlement engine, result table), Stage 3 (감성 영수증: photo attach, dot-font receipt DOM, html2canvas capture/share), and Stage 4+5 (Firebase Auth + Firestore sync, public share view, PWA manifest) are implemented in `index.html`. See `오내총_PRD_v1.md` §9 and `docs/superpowers/specs/` for design docs, and `docs/superpowers/plans/` for implementation plans.
 
 ## What this app is
 
@@ -28,11 +28,21 @@ Stage 1 (skeleton: hash routing, CONFIG, event/member CRUD), Stage 2 (item entry
 - Every capture (`captureReceiptToBlob`) must `await document.fonts.ready` first, or the Galmuri dot font may not have finished loading/rasterizing at capture time.
 - `onDeleteEvent` calls `photoStore.removeByEvent(id)` immediately after `store.remove(id)` — deleting an event always cleans up its photos in the same action.
 
+## Firebase sync & share view (Stage 4+5 implementation reference)
+
+- `store` (in `index.html`) is a memory cache (`eventsCache`) with write-through persistence, not a direct Firestore/localStorage wrapper. `store.get/getAll/save/remove` remain fully synchronous — every call site elsewhere in the file is unaware of Firestore. `save()`/`remove()` always write `eventsCache` + `localStorage[CONFIG.STORAGE_KEY]` immediately; if a user is signed in (`currentUser` set, `firebaseReady === true`), they additionally schedule a debounced (800ms, per-event-id timer) best-effort Firestore write via `scheduleCloudSave` — a failed cloud write only logs `console.warn`, since the local write already succeeded.
+- `initFirebase()` is the single gate: if `CONFIG.FIREBASE.apiKey` is empty (shipped default — real values are filled in by the project owner via the Firebase console), it returns `false` immediately without touching the `firebase` global at all, and the entire app runs in local-only mode exactly as in Stages 1-3. Never assume `firebase`/`auth`/`firestore` are defined without checking `firebaseReady` first.
+- `bootstrapApp()` (registered on `DOMContentLoaded` in place of a bare `router()` call) always renders instantly from the local cache first, then — only if Firebase is configured — checks auth state and re-renders in the background once a cloud sync completes. There is no loading screen; a signed-in user may briefly see stale/local data before the cloud refresh lands.
+- `syncFromCloud(user)` implements one-time-per-account migration: on first sync after login, any locally-cached event not already present in Firestore (by `id`) is uploaded; existing cloud documents for that `ownerUid` are never overwritten by local data. Completion is recorded in `localStorage[CONFIG.MIGRATION_FLAG_PREFIX + uid]` so it never re-runs for that account. This is a one-shot fetch, not an `onSnapshot` listener — sync reflects on refresh/re-login, not live within an open session.
+- `shareId` (20-char, `crypto.randomUUID()`-derived) is assigned to every event the moment it's first saved, regardless of login state, so a locally-created event is already shareable once it syncs. `ownerUid` is only present on events that have been synced to Firestore at least once.
+- The public share route `/#/view/{shareId}` (`renderShareView`) bypasses `store` entirely and queries Firestore directly (`where('shareId','==',...)`) — it works with no login and no local cache, by design. It reuses `renderSettlementTable`/`renderTransferCard` (also used by the owner's settlement result screen) but never `renderReceiptView` — the share view has no photos and no editing UI.
+- Firestore Security Rules text lives in `firestore.rules.txt` (repo root) — it is not deployed by any script; the project owner pastes it into the Firebase console manually.
+
 ## Data storage model (hybrid — important, don't collapse into one store)
 
 | Data | Location | Why |
 |---|---|---|
-| Events, members, items, settlement inputs, account info | **Firebase Firestore** | needs cross-device sync + shareable read links |
+| Events, members, items, settlement inputs, account info | **Firebase Firestore when signed in, `localStorage` otherwise** (always mirrored to `localStorage` too — see "Firebase sync & share view" above) | needs cross-device sync + shareable read links, but must work with zero setup/no account |
 | Highlight photos (base64 JPEG) | **`localStorage`** only, keyed `onct_photos: "{eventId}:{memberId}"` | avoids Firebase Storage cost/complexity |
 | Rounding/UI prefs | `localStorage`, key `onct_prefs` | device-local, no sync needed |
 
