@@ -617,6 +617,7 @@
 <body>
 <div id="app"></div>
 
+<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
 <script>
   // ====== CONFIG ======
   const CONFIG = {
@@ -2099,12 +2100,15 @@
       photoSlot.addEventListener('click', () => { openPhotoAttachModal(ev.id, member.id); });
     }
     document.getElementById('btn-photo-manager').addEventListener('click', () => { openPhotoManagerSheet(ev.id); });
-    document.getElementById('btn-save-all').addEventListener('click', () => { showToast('Stage 3 후속 태스크에서 연결됩니다'); });
-    document.getElementById('btn-save-receipt').addEventListener('click', () => { showToast('Stage 3 후속 태스크에서 연결됩니다'); });
-    document.getElementById('btn-share-receipt').addEventListener('click', () => { showToast('Stage 3 후속 태스크에서 연결됩니다'); });
+    document.getElementById('btn-save-all').addEventListener('click', () => { saveAllReceipts(ev); });
+    document.getElementById('btn-save-receipt').addEventListener('click', () => { saveReceiptImage(ev, member); });
+    document.getElementById('btn-share-receipt').addEventListener('click', () => { shareReceiptImage(ev, member); });
     const copyBtn = document.getElementById('btn-receipt-copy-account');
     if (copyBtn) {
-      copyBtn.addEventListener('click', () => { showToast('Stage 3 후속 태스크에서 연결됩니다'); });
+      copyBtn.addEventListener('click', () => {
+        const text = `${ev.account.bank} ${ev.account.number} ${ev.account.holder}`.trim();
+        navigator.clipboard.writeText(text).then(() => showToast('계좌 정보를 복사했어요'));
+      });
     }
   }
 
@@ -2292,6 +2296,69 @@
         }
       });
     }
+  }
+
+  async function captureReceiptToBlob(receiptEl) {
+    await document.fonts.ready;
+    const canvas = await html2canvas(receiptEl, {
+      scale: CONFIG.RECEIPT_SCALE,
+      backgroundColor: null,
+      ignoreElements: (el) => el.dataset && el.dataset.noCapture !== undefined,
+    });
+    return new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+  }
+
+  function downloadBlob(blob, filename) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  async function saveReceiptImage(ev, member) {
+    const receiptEl = document.getElementById('receipt-capture');
+    if (!receiptEl) return;
+    const blob = await captureReceiptToBlob(receiptEl);
+    downloadBlob(blob, `오내총_${ev.name}_${member.name}.png`);
+    showToast('영수증 이미지를 저장했어요');
+  }
+
+  async function shareReceiptImage(ev, member) {
+    const receiptEl = document.getElementById('receipt-capture');
+    if (!receiptEl) return;
+    const blob = await captureReceiptToBlob(receiptEl);
+    const file = new File([blob], `오내총_${ev.name}_${member.name}.png`, { type: 'image/png' });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      try {
+        await navigator.share({ files: [file], title: `${ev.name} 영수증` });
+        return;
+      } catch (err) {
+        if (err.name === 'AbortError') return; // 사용자가 공유를 취소함
+      }
+    }
+    downloadBlob(blob, `오내총_${ev.name}_${member.name}.png`);
+    showToast('갤러리에서 공유해주세요');
+  }
+
+  async function saveAllReceipts(ev) {
+    const activeTab = document.querySelector('.receipt-tab.active');
+    const originalMemberId = activeTab ? activeTab.dataset.id : ev.members[0].id;
+    showToast(`영수증 저장 중... (0/${ev.members.length})`);
+    const app = document.getElementById('app');
+    for (let i = 0; i < ev.members.length; i++) {
+      const member = ev.members[i];
+      const result = calcSettlement(ev);
+      const stage = app.querySelector('.receipt-stage');
+      if (stage) { stage.innerHTML = renderReceiptDom(ev, member, result); }
+      await new Promise(r => setTimeout(r, 150));
+      await saveReceiptImage(ev, member);
+    }
+    renderReceiptView({ id: ev.id, memberId: originalMemberId });
+    showToast('전체 영수증 저장을 완료했어요');
   }
 
   // ====== 라우트 등록 & 초기 실행 ======
