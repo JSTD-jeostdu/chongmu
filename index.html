@@ -2054,15 +2054,70 @@
   }
 
   // ====== 화면: 정산 결과 ======
+  function renderSettlementTable(ev, result) {
+    const sortedItems = ev.items.slice().sort((a, b) => a.order - b.order);
+    return `
+      <div class="settlement-table-wrap">
+        <table class="settlement-table">
+          <thead>
+            <tr>
+              <th>항목</th>
+              ${ev.members.map(m => `<th>${m.emoji}<br><span class="settlement-th-name">${escapeHtml(m.name)}</span></th>`).join('')}
+              <th>합계</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${sortedItems.map(item => `
+              <tr>
+                <td>${item.emoji ? escapeHtml(item.emoji) + ' ' : ''}${escapeHtml(item.name)}</td>
+                ${ev.members.map(m => {
+                  const value = result.matrix[item.id] ? result.matrix[item.id][m.id] : undefined;
+                  return `<td>${value === undefined ? '<span class="settlement-cell-empty">—</span>' : '₩' + value.toLocaleString(CONFIG.CURRENCY_LOCALE)}</td>`;
+                }).join('')}
+                <td>₩${result.itemTotals[item.id].toLocaleString(CONFIG.CURRENCY_LOCALE)}</td>
+              </tr>
+            `).join('')}
+            <tr class="settlement-total-row">
+              <th>총계</th>
+              ${ev.members.map(m => `<td>₩${(result.memberTotals[m.id] || 0).toLocaleString(CONFIG.CURRENCY_LOCALE)}</td>`).join('')}
+              <td>₩${result.grandTotal.toLocaleString(CONFIG.CURRENCY_LOCALE)}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    `;
+  }
+
+  function renderTransferCard(ev, result) {
+    const owner = ev.members.find(m => m.isOwner);
+    const hasAccount = ev.account.bank || ev.account.number || ev.account.holder;
+    return `
+      <section class="card-section">
+        <h2>${owner ? escapeHtml(owner.name) : '총무'}에게 보낼 금액</h2>
+        <div class="transfer-card">
+          ${ev.members.map(m => {
+            if (owner && m.id === owner.id) {
+              return `<div class="transfer-row transfer-owner-row"><span>${m.emoji} ${escapeHtml(m.name)}</span><span>결제 완료 🧾</span></div>`;
+            }
+            return `<div class="transfer-row"><span>${m.emoji} ${escapeHtml(m.name)}</span><span class="transfer-amount">₩${(result.transfers[m.id] || 0).toLocaleString(CONFIG.CURRENCY_LOCALE)}</span></div>`;
+          }).join('')}
+        </div>
+        ${hasAccount ? `
+          <div class="account-info-box">
+            <span>${escapeHtml(ev.account.bank)} ${escapeHtml(ev.account.number)} ${escapeHtml(ev.account.holder)}</span>
+            <button type="button" id="btn-copy-account" class="btn btn-ghost">복사</button>
+          </div>
+        ` : ''}
+      </section>
+    `;
+  }
+
   function renderSettlementResult(params) {
     const app = document.getElementById('app');
     const ev = store.get(params.id);
     if (!ev) { location.hash = '#/'; return; }
 
     const result = calcSettlement(ev);
-    const sortedItems = ev.items.slice().sort((a, b) => a.order - b.order);
-    const owner = ev.members.find(m => m.isOwner);
-    const hasAccount = ev.account.bank || ev.account.number || ev.account.holder;
 
     app.innerHTML = `
       <header class="topbar">
@@ -2071,52 +2126,11 @@
       </header>
       <main class="screen">
         ${result.errors.length > 0 ? `<div class="card-section field-error">${result.errors.map(e => escapeHtml(e.message)).join('<br>')}</div>` : ''}
-        <div class="settlement-table-wrap">
-          <table class="settlement-table">
-            <thead>
-              <tr>
-                <th>항목</th>
-                ${ev.members.map(m => `<th>${m.emoji}<br><span class="settlement-th-name">${escapeHtml(m.name)}</span></th>`).join('')}
-                <th>합계</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${sortedItems.map(item => `
-                <tr>
-                  <td>${item.emoji ? escapeHtml(item.emoji) + ' ' : ''}${escapeHtml(item.name)}</td>
-                  ${ev.members.map(m => {
-                    const value = result.matrix[item.id] ? result.matrix[item.id][m.id] : undefined;
-                    return `<td>${value === undefined ? '<span class="settlement-cell-empty">—</span>' : '₩' + value.toLocaleString(CONFIG.CURRENCY_LOCALE)}</td>`;
-                  }).join('')}
-                  <td>₩${result.itemTotals[item.id].toLocaleString(CONFIG.CURRENCY_LOCALE)}</td>
-                </tr>
-              `).join('')}
-              <tr class="settlement-total-row">
-                <th>총계</th>
-                ${ev.members.map(m => `<td>₩${(result.memberTotals[m.id] || 0).toLocaleString(CONFIG.CURRENCY_LOCALE)}</td>`).join('')}
-                <td>₩${result.grandTotal.toLocaleString(CONFIG.CURRENCY_LOCALE)}</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-
-        <section class="card-section">
-          <h2>${owner ? escapeHtml(owner.name) : '총무'}에게 보낼 금액</h2>
-          <div class="transfer-card">
-            ${ev.members.map(m => {
-              if (owner && m.id === owner.id) {
-                return `<div class="transfer-row transfer-owner-row"><span>${m.emoji} ${escapeHtml(m.name)}</span><span>결제 완료 🧾</span></div>`;
-              }
-              return `<div class="transfer-row"><span>${m.emoji} ${escapeHtml(m.name)}</span><span class="transfer-amount">₩${(result.transfers[m.id] || 0).toLocaleString(CONFIG.CURRENCY_LOCALE)}</span></div>`;
-            }).join('')}
-          </div>
-          ${hasAccount ? `
-            <div class="account-info-box">
-              <span>${escapeHtml(ev.account.bank)} ${escapeHtml(ev.account.number)} ${escapeHtml(ev.account.holder)}</span>
-              <button type="button" id="btn-copy-account" class="btn btn-ghost">복사</button>
-            </div>
-          ` : ''}
-        </section>
+        ${renderSettlementTable(ev, result)}
+        ${renderTransferCard(ev, result)}
+        ${currentUser && ev.ownerUid
+          ? `<button type="button" id="btn-copy-share-link" class="btn btn-ghost">🔗 공유 링크 복사</button>`
+          : `<div class="field-hint">로그인하면 공유 링크를 만들 수 있어요</div>`}
 
         <section class="card-section">
           <button type="button" id="btn-settle" class="btn ${(ev.status === 'settled' || result.errors.length > 0) ? 'btn-disabled' : 'btn-primary'}" ${(ev.status === 'settled' || result.errors.length > 0) ? 'disabled' : ''}>
@@ -2141,6 +2155,14 @@
       copyBtn.addEventListener('click', () => {
         const text = `${ev.account.bank} ${ev.account.number} ${ev.account.holder}`.trim();
         navigator.clipboard.writeText(text).then(() => showToast('계좌 정보를 복사했어요'));
+      });
+    }
+
+    const shareLinkBtn = document.getElementById('btn-copy-share-link');
+    if (shareLinkBtn) {
+      shareLinkBtn.addEventListener('click', () => {
+        const url = `${location.origin}${location.pathname}#/view/${ev.shareId}`;
+        navigator.clipboard.writeText(url).then(() => showToast('공유 링크를 복사했어요'));
       });
     }
 
