@@ -1526,6 +1526,10 @@
     if (receiptMatch && routes['/event/:id/receipt/:memberId']) {
       return { render: routes['/event/:id/receipt/:memberId'], params: { id: receiptMatch[1], memberId: receiptMatch[2] } };
     }
+    const viewMatch = hash.match(/^\/view\/([^/]+)$/);
+    if (viewMatch && routes['/view/:shareId']) {
+      return { render: routes['/view/:shareId'], params: { shareId: viewMatch[1] } };
+    }
     return null;
   }
 
@@ -2179,6 +2183,41 @@
     });
   }
 
+  // ====== 화면: 공유 뷰 (비로그인 읽기 전용) ======
+  async function renderShareView(params) {
+    const app = document.getElementById('app');
+    app.innerHTML = `<main class="screen"><p class="field-hint">불러오는 중...</p></main>`;
+    if (!firebaseReady) {
+      app.innerHTML = `<main class="screen"><div class="empty-state"><p>공유 기능이 아직 설정되지 않았어요</p></div></main>`;
+      return;
+    }
+    const snapshot = await firestore.collection('events').where('shareId', '==', params.shareId).limit(1).get()
+      .catch(() => null);
+    if (!snapshot || snapshot.empty) {
+      app.innerHTML = `<main class="screen"><div class="empty-state"><p>모임을 찾을 수 없어요</p></div></main>`;
+      return;
+    }
+    const ev = snapshot.docs[0].data();
+    const result = calcSettlement(ev);
+    app.innerHTML = `
+      <header class="topbar">
+        <h1>${escapeHtml(ev.name)}</h1>
+        ${renderBadge('🔒 읽기 전용', 'default')}
+      </header>
+      <main class="screen">
+        ${renderSettlementTable(ev, result)}
+        ${renderTransferCard(ev, result)}
+      </main>
+    `;
+    const copyBtn = document.getElementById('btn-copy-account');
+    if (copyBtn) {
+      copyBtn.addEventListener('click', () => {
+        const text = `${ev.account.bank} ${ev.account.number} ${ev.account.holder}`.trim();
+        navigator.clipboard.writeText(text).then(() => showToast('계좌 정보를 복사했어요'));
+      });
+    }
+  }
+
   // ====== 화면: 영수증 ======
   function renderBarcodeSvg(seed) {
     const barCount = 40;
@@ -2605,6 +2644,7 @@
   registerRoute('/event/:id/items', renderItemsEntry);
   registerRoute('/event/:id/result', renderSettlementResult);
   registerRoute('/event/:id/receipt/:memberId', renderReceiptView);
+  registerRoute('/view/:shareId', renderShareView);
   window.addEventListener('DOMContentLoaded', bootstrapApp);
   if (CONFIG.DEV_MODE) {
     window.addEventListener('DOMContentLoaded', runRegressionTests);
