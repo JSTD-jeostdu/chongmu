@@ -173,7 +173,7 @@ if (receiptMatch && routes['/event/:id/receipt/:memberId']) {
 
 흐름:
 1. 최초 호출 시(전역 `localStorage.getItem(CONFIG.PHOTO_NOTICE_KEY)` 없음) → 안내 `confirmDialog` 스타일 알림 먼저 표시("사진은 이 기기에만 저장돼요...") → 확인 시 `localStorage.setItem(CONFIG.PHOTO_NOTICE_KEY, '1')` 후 계속 진행
-2. `<input type="file" accept="image/*" capture>` 트리거
+2. `<input type="file" accept="image/*">` 트리거 (`capture` 속성은 넣지 않음 — 넣으면 카메라 앱이 바로 열려 갤러리 선택지가 가려짐. 하이라이트 사진은 대부분 모임 중 미리 찍어둔 사진을 나중에 갤러리에서 고르는 흐름이라 OS 기본 선택지(갤러리/카메라/파일)를 그대로 노출하는 쪽이 실사용에 맞음)
 3. 파일 선택 시 `resizeImageToCanvas` → `pendingPhotoCanvas`에 저장 → 3개 필터 미리보기 썸네일(각각 `applyPhotoFilter(pendingPhotoCanvas, filterName)` 결과를 작은 `<canvas>`로 렌더) 표시, 기본 선택은 `original`
 4. 필터 썸네일 클릭으로 선택 전환(라디오 형태 UI)
 5. `[확정]` 버튼 → 선택된 필터의 canvas를 `canvasToCompressedDataURL` → `photoStore.set(eventId, memberId, dataUrl)`(try/catch로 QuotaExceededError 처리) → 모달 닫고 `renderReceiptView` 재호출

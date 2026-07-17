@@ -2149,7 +2149,7 @@
       <div class="sheet-box">
         <h2>하이라이트 사진</h2>
         ${hasExisting ? '<button type="button" id="btn-remove-photo" class="btn btn-danger" style="width:100%">현재 사진 삭제</button>' : ''}
-        <input type="file" accept="image/*" capture id="photo-file-input" class="input" />
+        <input type="file" accept="image/*" id="photo-file-input" class="input" />
         <div id="photo-filter-preview" class="photo-filter-preview"></div>
         <div class="sheet-actions">
           <button type="button" id="btn-photo-cancel" class="btn btn-ghost">취소</button>
@@ -2322,26 +2322,36 @@
   async function saveReceiptImage(ev, member) {
     const receiptEl = document.getElementById('receipt-capture');
     if (!receiptEl) return;
-    const blob = await captureReceiptToBlob(receiptEl);
-    downloadBlob(blob, `오내총_${ev.name}_${member.name}.png`);
-    showToast('영수증 이미지를 저장했어요');
+    try {
+      const blob = await captureReceiptToBlob(receiptEl);
+      downloadBlob(blob, `오내총_${ev.name}_${member.name}.png`);
+      showToast('영수증 이미지를 저장했어요');
+    } catch (err) {
+      console.warn('saveReceiptImage 실패:', err);
+      showToast('영수증 이미지 저장에 실패했어요');
+    }
   }
 
   async function shareReceiptImage(ev, member) {
     const receiptEl = document.getElementById('receipt-capture');
     if (!receiptEl) return;
-    const blob = await captureReceiptToBlob(receiptEl);
-    const file = new File([blob], `오내총_${ev.name}_${member.name}.png`, { type: 'image/png' });
-    if (navigator.canShare && navigator.canShare({ files: [file] })) {
-      try {
-        await navigator.share({ files: [file], title: `${ev.name} 영수증` });
-        return;
-      } catch (err) {
-        if (err.name === 'AbortError') return; // 사용자가 공유를 취소함
+    try {
+      const blob = await captureReceiptToBlob(receiptEl);
+      const file = new File([blob], `오내총_${ev.name}_${member.name}.png`, { type: 'image/png' });
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        try {
+          await navigator.share({ files: [file], title: `${ev.name} 영수증` });
+          return;
+        } catch (err) {
+          if (err.name === 'AbortError') return; // 사용자가 공유를 취소함
+        }
       }
+      downloadBlob(blob, `오내총_${ev.name}_${member.name}.png`);
+      showToast('갤러리에서 공유해주세요');
+    } catch (err) {
+      console.warn('shareReceiptImage 실패:', err);
+      showToast('영수증 이미지 공유에 실패했어요');
     }
-    downloadBlob(blob, `오내총_${ev.name}_${member.name}.png`);
-    showToast('갤러리에서 공유해주세요');
   }
 
   async function saveAllReceipts(ev) {
