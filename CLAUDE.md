@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project status
 
-Stage 1 (skeleton: hash routing, CONFIG, event/member CRUD) and Stage 2 (item entry, settlement engine, result table) are implemented in `index.html`. Stages 3-5 (receipts, Firebase sync, PWA polish) are not yet implemented — see `오내총_PRD_v1.md` §9 and `docs/superpowers/specs/` for design docs, and `docs/superpowers/plans/` for implementation plans.
+Stage 1 (skeleton: hash routing, CONFIG, event/member CRUD), Stage 2 (item entry, settlement engine, result table), and Stage 3 (감성 영수증: photo attach, dot-font receipt DOM, html2canvas capture/share) are implemented in `index.html`. Stages 4-5 (Firebase sync, PWA polish) are not yet implemented — see `오내총_PRD_v1.md` §9 and `docs/superpowers/specs/` for design docs, and `docs/superpowers/plans/` for implementation plans.
 
 ## What this app is
 
@@ -19,6 +19,14 @@ Stage 1 (skeleton: hash routing, CONFIG, event/member CRUD) and Stage 2 (item en
 - **Comments are written in Korean** (matches PRD and target audience).
 - **Deployment target**: GitHub Pages.
 - **Mobile-first, responsive**; PWA manifest + icons are in scope for v1, but a service worker is explicitly **not** (Firestore offline persistence substitutes for it).
+
+## Photo storage & receipt capture (Stage 3 implementation reference)
+
+- `photoStore` (in `index.html`, parallel to `store`) is the only code path that touches `localStorage[CONFIG.PHOTOS_KEY]`. API: `get(eventId, memberId)`, `set(eventId, memberId, dataUrl)` (throws `QuotaExceededError` on failure — callers must catch it), `remove(eventId, memberId)`, `removeByEvent(eventId)`, `listByEvent(eventId)`, `usage()` (KB estimate). `event.*` objects never reference photos directly — the two are joined only by the `"{eventId}:{memberId}"` key convention.
+- Photos are resized (`resizeImageToCanvas`, long edge capped at `CONFIG.PHOTO_MAX_EDGE`) and filtered (`applyPhotoFilter`: `'original'|'grayscale'|'dither'`) via `<canvas>` pixel manipulation at save time — never via CSS `filter`, which `html2canvas` does not reliably capture. Only the final filtered/compressed result is persisted; the resized-but-unfiltered intermediate lives only in the module-scope `pendingPhotoCanvas` variable during the attach modal's session and is never written to `localStorage`.
+- Any element that must not appear in a captured receipt PNG (e.g. the account-copy button) must carry a `data-no-capture` attribute — `captureReceiptToBlob`'s `html2canvas` call excludes those via `ignoreElements`.
+- Every capture (`captureReceiptToBlob`) must `await document.fonts.ready` first, or the Galmuri dot font may not have finished loading/rasterizing at capture time.
+- `onDeleteEvent` calls `photoStore.removeByEvent(id)` immediately after `store.remove(id)` — deleting an event always cleans up its photos in the same action.
 
 ## Data storage model (hybrid — important, don't collapse into one store)
 
