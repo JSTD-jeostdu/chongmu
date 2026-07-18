@@ -805,10 +805,11 @@
       return event;
     },
     remove(id) {
+      const existing = eventsCache.find(e => e.id === id);
       eventsCache = eventsCache.filter(e => e.id !== id);
       this._writeAllLocal();
-      if (currentUser && firebaseReady) {
-        firestore.collection('events').doc(id).delete().catch(err => console.warn('클라우드 삭제 실패:', err));
+      if (currentUser && firebaseReady && existing && existing.shareId) {
+        firestore.collection('events').doc(existing.shareId).delete().catch(err => console.warn('클라우드 삭제 실패:', err));
       }
     },
   };
@@ -822,7 +823,9 @@
     cloudSaveTimers[event.id] = setTimeout(() => {
       if (!currentUser) return; // 디바운스 대기 중 로그아웃된 경우: payload 조립 자체를 건너뜀
       const payload = { ...event, ownerUid: currentUser.uid };
-      firestore.collection('events').doc(event.id).set(payload, { merge: true })
+      // Firestore 문서 ID는 event.id가 아니라 shareId를 쓴다 — list 권한 없이 get만으로
+      // 공유 링크가 동작하게 하기 위함(무단 컬렉션 전체 열람 차단 설계 참고).
+      firestore.collection('events').doc(event.shareId).set(payload, { merge: true })
         .catch(err => console.warn('클라우드 저장 실패(로컬엔 이미 반영됨):', err));
     }, 800);
   }
@@ -840,7 +843,7 @@
       const localOnly = eventsCache.filter(e => !cloudIds.has(e.id));
       for (const ev of localOnly) {
         const payload = { ...ev, ownerUid: user.uid, shareId: ev.shareId || generateShareId() };
-        await firestore.collection('events').doc(ev.id).set(payload).catch(err => console.warn('마이그레이션 실패:', ev.id, err));
+        await firestore.collection('events').doc(payload.shareId).set(payload).catch(err => console.warn('마이그레이션 실패:', ev.id, err));
         cloudEvents.push(payload);
       }
       localStorage.setItem(migrationKey, '1');
@@ -1411,8 +1414,9 @@
     store.remove(evShare.id);
 
     // ---- syncFromCloud: 마이그레이션은 로컬 전용 이벤트만 업로드, 기존 클라우드 데이터는 절대 덮어쓰지 않음 ----
+    // Firestore 문서 ID는 event.id가 아니라 event.shareId를 쓴다(무단 컬렉션 전체 열람 차단 설계 참고).
     function makeFakeFirestore(initialDocs) {
-      const docs = new Map(initialDocs.map(d => [d.id, d]));
+      const docs = new Map(initialDocs.map(d => [d.shareId, d]));
       function queryFrom(list) {
         return {
           where(field, op, value) { return queryFrom(list.filter(d => d[field] === value)); },
@@ -1423,10 +1427,11 @@
       return {
         collection() {
           return Object.assign(queryFrom(Array.from(docs.values())), {
-            doc(id) {
+            doc(shareId) {
               return {
-                set: (payload) => { docs.set(id, { ...payload, id }); return Promise.resolve(); },
-                delete: () => { docs.delete(id); return Promise.resolve(); },
+                get: () => Promise.resolve(docs.has(shareId) ? { exists: true, data: () => docs.get(shareId) } : { exists: false }),
+                set: (payload) => { docs.set(shareId, payload); return Promise.resolve(); },
+                delete: () => { docs.delete(shareId); return Promise.resolve(); },
               };
             },
           });
@@ -1451,15 +1456,16 @@
 
     await syncFromCloud({ uid: 'test-uid' });
 
-    assert('syncFromCloud: 로컬 전용 이벤트가 클라우드로 업로드됨', fakeFs._docs.has(localOnlyEvent.id));
-    assert('syncFromCloud: id가 겹치는 기존 클라우드 이벤트는 로컬 값으로 덮어쓰이지 않고 그대로 유지됨', fakeFs._docs.get('cloud-only-1').name === '클라우드 전용');
+    const uploadedLocalOnly = store.get(localOnlyEvent.id);
+    assert('syncFromCloud: 로컬 전용 이벤트가 클라우드로 업로드됨', uploadedLocalOnly !== null && fakeFs._docs.has(uploadedLocalOnly.shareId));
+    assert('syncFromCloud: id가 겹치는 기존 클라우드 이벤트는 로컬 값으로 덮어쓰이지 않고 그대로 유지됨', fakeFs._docs.get('existing-share-id-0001').name === '클라우드 전용');
     assert('syncFromCloud: 병합 후 캐시에 두 이벤트 모두 포함', store.get('cloud-only-1') !== null && store.get(localOnlyEvent.id) !== null);
     assert('syncFromCloud: 마이그레이션 플래그 기록됨', localStorage.getItem(CONFIG.MIGRATION_FLAG_PREFIX + 'test-uid') === '1');
 
-    fakeFs._docs.delete(localOnlyEvent.id); // 클라우드에서만 제거해 재업로드 여부를 관찰
-    eventsCache = [localOnlyEvent];
+    fakeFs._docs.delete(uploadedLocalOnly.shareId); // 클라우드에서만 제거해 재업로드 여부를 관찰
+    eventsCache = [uploadedLocalOnly];
     await syncFromCloud({ uid: 'test-uid' });
-    assert('syncFromCloud: 마이그레이션 플래그가 있으면 재업로드하지 않음', !fakeFs._docs.has(localOnlyEvent.id));
+    assert('syncFromCloud: 마이그레이션 플래그가 있으면 재업로드하지 않음', !fakeFs._docs.has(uploadedLocalOnly.shareId));
 
     localStorage.removeItem(CONFIG.MIGRATION_FLAG_PREFIX + 'test-uid');
     firestore = savedFirestore;
@@ -2228,13 +2234,13 @@
       app.innerHTML = `<main class="screen"><div class="empty-state"><p>공유 기능이 아직 설정되지 않았어요</p></div></main>`;
       return;
     }
-    const snapshot = await firestore.collection('events').where('shareId', '==', params.shareId).limit(1).get()
+    const docSnap = await firestore.collection('events').doc(params.shareId).get()
       .catch(() => null);
-    if (!snapshot || snapshot.empty) {
+    if (!docSnap || !docSnap.exists) {
       app.innerHTML = `<main class="screen"><div class="empty-state"><p>모임을 찾을 수 없어요</p></div></main>`;
       return;
     }
-    const ev = snapshot.docs[0].data();
+    const ev = docSnap.data();
     const result = calcSettlement(ev);
     app.innerHTML = `
       <header class="topbar">
