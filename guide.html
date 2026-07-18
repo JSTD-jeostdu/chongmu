@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>오.내.총 이용 안내서</title>
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<meta name="theme-color" content="#FF7A45">
+<meta property="og:type" content="website">
+<meta property="og:title" content="오늘은 내가 총무 — 이용 안내서">
+<meta property="og:description" content="모임 정산부터 감성 영수증까지, 처음 쓰는 사람도 3분이면 끝나는 사용법.">
+<meta property="og:url" content="https://jstd-jeostdu.github.io/chongmu/guide.html">
+<meta property="og:image" content="https://jstd-jeostdu.github.io/chongmu/assets/og-image.png">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css" />
+<style>
+  :root {
+    --bg: #FFF9F2;
+    --card: #ffffff;
+    --ink: #3A2E28;
+    --ink-soft: #6B5C4E;
+    --ink-faint: #8A7A66;
+    --primary: #FF7A45;
+    --primary-soft: #FFF3E9;
+    --line: #F0E6DA;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #221B15;
+      --card: #2E251E;
+      --ink: #F5ECE2;
+      --ink-soft: #CBB9A6;
+      --ink-faint: #9C8A76;
+      --primary: #FF8F5E;
+      --primary-soft: #3A2C20;
+      --line: #40332A;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: 'Pretendard', -apple-system, sans-serif;
+    line-height: 1.65;
+  }
+  .wrap {
+    max-width: 640px;
+    margin: 0 auto;
+    padding: 0 20px 64px;
+  }
+  h1, h2, h3, p { margin: 0; }
+
+  header.hero {
+    text-align: center;
+    padding: 56px 16px 36px;
+  }
+  header.hero .icon {
+    width: 64px;
+    height: 64px;
+    border-radius: 18px;
+    margin-bottom: 16px;
+  }
+  header.hero .eyebrow {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--primary);
+    letter-spacing: 0.04em;
+  }
+  header.hero h1 {
+    font-size: 26px;
+    margin: 8px 0 10px;
+  }
+  header.hero p {
+    font-size: 15px;
+    color: var(--ink-soft);
+    max-width: 420px;
+    margin: 0 auto;
+  }
+  .cta {
+    display: inline-block;
+    margin-top: 24px;
+    background: var(--primary);
+    color: #fff;
+    text-decoration: none;
+    font-weight: 700;
+    font-size: 15px;
+    padding: 14px 28px;
+    border-radius: 999px;
+    box-shadow: 0 4px 14px rgba(255,122,69,0.35);
+  }
+  .cta-sub {
+    display: block;
+    margin-top: 10px;
+    font-size: 12.5px;
+    color: var(--ink-faint);
+  }
+
+  section {
+    background: var(--card);
+    border-radius: 18px;
+    padding: 26px 22px;
+    margin-bottom: 16px;
+    box-shadow: 0 2px 10px rgba(58,46,40,0.05);
+  }
+  section h2 {
+    font-size: 17px;
+    margin-bottom: 4px;
+  }
+  section .desc {
+    font-size: 13.5px;
+    color: var(--ink-faint);
+    margin-bottom: 18px;
+  }
+
+  .steps {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .step {
+    display: flex;
+    gap: 14px;
+    padding: 14px 0;
+    border-bottom: 1px solid var(--line);
+  }
+  .step:last-child { border-bottom: none; }
+  .step .num {
+    flex-shrink: 0;
+    width: 30px;
+    height: 30px;
+    border-radius: 10px;
+    background: var(--primary-soft);
+    color: var(--primary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 800;
+    font-size: 14px;
+  }
+  .step .body h3 {
+    font-size: 14.5px;
+    margin-bottom: 3px;
+  }
+  .step .body p {
+    font-size: 13.5px;
+    color: var(--ink-soft);
+  }
+
+  .feature-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 12px;
+  }
+  .feature-card {
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 14px;
+  }
+  .feature-card .emoji { font-size: 20px; }
+  .feature-card h3 {
+    font-size: 13.5px;
+    margin: 6px 0 3px;
+  }
+  .feature-card p {
+    font-size: 12px;
+    color: var(--ink-faint);
+  }
+
+  .faq-item {
+    padding: 14px 0;
+    border-bottom: 1px solid var(--line);
+  }
+  .faq-item:last-child { border-bottom: none; }
+  .faq-item .q {
+    font-weight: 700;
+    font-size: 14px;
+    margin-bottom: 5px;
+    display: flex;
+    gap: 8px;
+  }
+  .faq-item .q .mark {
+    color: var(--primary);
+  }
+  .faq-item .a {
+    font-size: 13.5px;
+    color: var(--ink-soft);
+    padding-left: 22px;
+  }
+
+  .notice {
+    background: var(--primary-soft);
+    border-left: 4px solid var(--primary);
+    border-radius: 8px;
+    padding: 12px 14px;
+    font-size: 13px;
+    color: var(--ink-soft);
+  }
+
+  footer {
+    text-align: center;
+    font-size: 12px;
+    color: var(--ink-faint);
+    padding: 24px 0 0;
+  }
+  footer a { color: var(--ink-faint); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="hero">
+    <img class="icon" src="icons/icon.svg" alt="오.내.총 아이콘" />
+    <div class="eyebrow">이용 안내서</div>
+    <h1>오늘은 내가 총무</h1>
+    <p>모임 정산, 계산기 두드릴 필요 없이 항목만 입력하면 끝. 감성 영수증까지 자동으로 만들어드려요.</p>
+    <a class="cta" href="./index.html">지금 시작하기 →</a>
+    <span class="cta-sub">가입 없이 바로 사용 가능해요</span>
+  </header>
+
+  <section>
+    <h2>이렇게 써요</h2>
+    <p class="desc">모임 만들기부터 영수증 공유까지, 처음이어도 5단계면 끝나요.</p>
+    <div class="steps">
+      <div class="step">
+        <div class="num">1</div>
+        <div class="body">
+          <h3>모임 만들기</h3>
+          <p>모임 이름, 날짜, (선택) 총무 계좌 정보를 입력해요. 로그인 없이도 바로 시작할 수 있어요.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="num">2</div>
+        <div class="body">
+          <h3>멤버 추가하기</h3>
+          <p>함께한 사람들의 이름과 이모지를 등록해요. 2~12명까지 가능해요.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="num">3</div>
+        <div class="body">
+          <h3>결제 항목 입력하기</h3>
+          <p>결제할 때마다 항목명·금액·참여자를 입력해요. 특정 멤버만 낸 금액은 직접 조정할 수도 있어요.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="num">4</div>
+        <div class="body">
+          <h3>정산 결과 확인하기</h3>
+          <p>1인당 얼마를 보내야 하는지 1원 단위까지 자동으로 계산돼요.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="num">5</div>
+        <div class="body">
+          <h3>영수증 만들어 공유하기</h3>
+          <p>멤버별로 하이라이트 사진을 붙이고 감성 영수증 이미지를 만들어 카톡으로 바로 공유해요.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>주요 기능</h2>
+    <p class="desc">이런 점들이 스프레드시트 정산과 달라요.</p>
+    <div class="feature-grid">
+      <div class="feature-card">
+        <div class="emoji">🧮</div>
+        <h3>자동 정산 계산</h3>
+        <p>합계가 항상 딱 맞도록 자동 검증</p>
+      </div>
+      <div class="feature-card">
+        <div class="emoji">🧾</div>
+        <h3>감성 영수증</h3>
+        <p>도트 폰트 + 사진으로 만드는 나만의 영수증</p>
+      </div>
+      <div class="feature-card">
+        <div class="emoji">🔗</div>
+        <h3>비로그인 공유 링크</h3>
+        <p>참여자는 링크만 눌러도 정산 내역 확인</p>
+      </div>
+      <div class="feature-card">
+        <div class="emoji">☁️</div>
+        <h3>기기 변경 대비</h3>
+        <p>Google 로그인 시 자동 클라우드 동기화</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>자주 묻는 질문</h2>
+    <div class="faq-item">
+      <div class="q"><span class="mark">Q.</span> 회원가입을 꼭 해야 하나요?</div>
+      <div class="a">아니요. 로그인 없이도 모임 생성부터 정산, 영수증 생성까지 전부 사용할 수 있어요. 다만 이 경우 데이터는 지금 쓰는 기기에만 저장돼요. 다른 기기에서도 같은 모임을 이어서 관리하고 싶다면 Google 로그인을 하면 자동으로 동기화돼요.</div>
+    </div>
+    <div class="faq-item">
+      <div class="q"><span class="mark">Q.</span> 정산 결과를 같이 본 친구들도 로그인해야 하나요?</div>
+      <div class="a">아니요. 총무가 공유 링크를 전달하면, 받는 사람은 로그인 없이 바로 정산 내역과 계좌 정보를 볼 수 있어요.</div>
+    </div>
+    <div class="faq-item">
+      <div class="q"><span class="mark">Q.</span> 영수증에 넣은 사진은 어디에 저장되나요?</div>
+      <div class="a">사진은 총무의 기기에만 저장돼요(서버에 업로드되지 않아요). 그래서 사진이 담긴 영수증 이미지는 반드시 사진을 첨부한 그 기기에서 만들어 공유해야 해요.</div>
+    </div>
+    <div class="faq-item">
+      <div class="q"><span class="mark">Q.</span> 계좌번호 같은 정보도 안전한가요?</div>
+      <div class="a">공유 링크를 아는 사람만 정산 내역과 계좌 정보를 볼 수 있고, 모임 내용을 수정할 수 있는 건 만든 사람(총무)뿐이에요.</div>
+    </div>
+    <div class="faq-item">
+      <div class="q"><span class="mark">Q.</span> 앱을 따로 설치해야 하나요?</div>
+      <div class="a">아니요, 링크만 열면 바로 쓸 수 있는 웹앱이에요. 자주 쓴다면 홈 화면에 추가하면 앱처럼 아이콘으로 실행할 수 있어요.</div>
+    </div>
+  </section>
+
+  <div class="notice">
+    💡 총무 한 명이 모든 결제를 담당하고 입력하는 구조예요. 결제자가 여러 명으로 나뉘는 모임이라면, 각자 낸 항목을 나눠서 총무 한 명이 입력해주세요.
+  </div>
+
+  <footer>
+    오늘은 내가 총무 · 이용 안내서 · made by JSTD
+  </footer>
+
+</div>
+</body>
+</html>
