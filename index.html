@@ -619,6 +619,21 @@
     border-radius: 8px;
   }
 
+  /* ====== 제작자 푸터 ====== */
+  #app-footer {
+    max-width: 560px;
+    margin: 32px auto 0;
+    padding: 20px 16px 32px;
+    text-align: center;
+    font-size: 12px;
+    line-height: 1.7;
+    color: #B0A290;
+  }
+  #app-footer .app-footer-title {
+    font-weight: 600;
+    color: #8A7A66;
+  }
+
   /* ====== 반응형 보강 ====== */
   @media (min-width: 561px) {
     #app { padding-left: 0; padding-right: 0; }
@@ -633,6 +648,10 @@
 </head>
 <body>
 <div id="app"></div>
+<footer id="app-footer">
+  <div class="app-footer-title">오늘은 내가 총무</div>
+  <div>made by JSTD</div>
+</footer>
 
 <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
@@ -2541,6 +2560,7 @@
             `;
           }).join('')}
         </div>
+        ${ev && ev.members.length > 0 ? '<button type="button" id="btn-bulk-photo-apply" class="btn btn-primary" style="width:100%">전체 멤버에게 같은 사진 적용</button>' : ''}
         ${photos.length > 0 ? '<button type="button" id="btn-remove-all-photos" class="btn btn-danger" style="width:100%">이 모임 사진 전체 삭제</button>' : ''}
         <div class="sheet-actions">
           <button type="button" id="btn-photo-manager-close" class="btn btn-ghost">닫기</button>
@@ -2552,6 +2572,14 @@
     function close() { overlay.remove(); }
     overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
     document.getElementById('btn-photo-manager-close').addEventListener('click', close);
+
+    const bulkApplyBtn = document.getElementById('btn-bulk-photo-apply');
+    if (bulkApplyBtn) {
+      bulkApplyBtn.addEventListener('click', () => {
+        close();
+        openBulkPhotoAttachModal(eventId);
+      });
+    }
 
     overlay.querySelectorAll('.photo-manager-remove').forEach(btn => {
       btn.addEventListener('click', async () => {
@@ -2575,6 +2603,106 @@
         }
       });
     }
+  }
+
+  async function openBulkPhotoAttachModal(eventId) {
+    await showPhotoNoticeOnce();
+    const ev = store.get(eventId);
+    if (!ev || ev.members.length === 0) return;
+
+    const overlay = document.createElement('div');
+    overlay.className = 'sheet-overlay';
+    overlay.innerHTML = `
+      <div class="sheet-box">
+        <h2>전체 멤버에게 같은 사진 적용</h2>
+        <input type="file" accept="image/*" id="bulk-photo-file-input" class="input" />
+        <div id="bulk-photo-filter-preview" class="photo-filter-preview"></div>
+        <div class="sheet-actions">
+          <button type="button" id="btn-bulk-photo-cancel" class="btn btn-ghost">취소</button>
+          <button type="button" id="btn-bulk-photo-confirm" class="btn btn-primary" disabled>전체 적용</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+
+    pendingPhotoCanvas = null;
+    pendingPhotoFilter = 'original';
+
+    function closeModal() {
+      pendingPhotoCanvas = null;
+      overlay.remove();
+    }
+
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) closeModal(); });
+    document.getElementById('btn-bulk-photo-cancel').addEventListener('click', closeModal);
+
+    function renderBulkPhotoFilterPreview() {
+      const previewEl = document.getElementById('bulk-photo-filter-preview');
+      if (!previewEl) return;
+      if (!pendingPhotoCanvas) {
+        previewEl.innerHTML = '';
+        document.getElementById('btn-bulk-photo-confirm').disabled = true;
+        return;
+      }
+      const filters = ['original', 'grayscale', 'dither'];
+      const labels = { original: '원본 컬러', grayscale: '흑백', dither: '도트' };
+      previewEl.innerHTML = filters.map(f => `
+        <div class="photo-filter-option${f === pendingPhotoFilter ? ' active' : ''}" data-filter="${f}">
+          <div class="photo-filter-thumb-wrap"></div>
+          <span>${labels[f]}</span>
+        </div>
+      `).join('');
+      filters.forEach(f => {
+        const wrap = previewEl.querySelector(`.photo-filter-option[data-filter="${f}"] .photo-filter-thumb-wrap`);
+        const filteredCanvas = applyPhotoFilter(pendingPhotoCanvas, f);
+        filteredCanvas.className = 'photo-filter-thumb';
+        wrap.appendChild(filteredCanvas);
+      });
+      previewEl.querySelectorAll('.photo-filter-option').forEach(opt => {
+        opt.addEventListener('click', () => {
+          pendingPhotoFilter = opt.dataset.filter;
+          renderBulkPhotoFilterPreview();
+        });
+      });
+      document.getElementById('btn-bulk-photo-confirm').disabled = false;
+    }
+
+    document.getElementById('bulk-photo-file-input').addEventListener('change', async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      pendingPhotoCanvas = await resizeImageToCanvas(file, CONFIG.PHOTO_MAX_EDGE);
+      pendingPhotoFilter = 'original';
+      renderBulkPhotoFilterPreview();
+    });
+
+    document.getElementById('btn-bulk-photo-confirm').addEventListener('click', async () => {
+      if (!pendingPhotoCanvas) return;
+      const hasExistingPhoto = ev.members.some(m => !!photoStore.get(eventId, m.id));
+      if (hasExistingPhoto) {
+        const ok = await confirmDialog('기존에 첨부된 사진도 모두 새 사진으로 덮어씁니다. 계속할까요?');
+        if (!ok) return;
+      }
+      const finalCanvas = applyPhotoFilter(pendingPhotoCanvas, pendingPhotoFilter);
+      const dataUrl = canvasToCompressedDataURL(finalCanvas, CONFIG.PHOTO_QUALITY);
+      let appliedCount = 0;
+      try {
+        for (const m of ev.members) {
+          photoStore.set(eventId, m.id, dataUrl);
+          appliedCount++;
+        }
+      } catch (err) {
+        if (err.name === 'QuotaExceededError') {
+          closeModal();
+          showToast(`${appliedCount}/${ev.members.length}명에게 적용한 뒤 용량이 가득 찼어요`);
+          openPhotoManagerSheet(eventId);
+          return;
+        }
+        throw err;
+      }
+      closeModal();
+      showToast(`전체 ${appliedCount}명에게 사진을 적용했어요`);
+      openPhotoManagerSheet(eventId);
+    });
   }
 
   async function captureReceiptToBlob(receiptEl) {
