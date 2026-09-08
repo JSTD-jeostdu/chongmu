@@ -676,7 +676,7 @@
       '#FFB4A2', '#FFD6A5', '#FDFFB6', '#CAFFBF',
       '#9BF6FF', '#A0C4FF', '#BDB2FF', '#FFC6FF',
     ],
-    MEMBER_EMOJIS: ['🦊','🐰','🐻','🐹','🐱','🐶','🐧','🐥','🦁','🐸','🐼','🐨'],
+    MEMBER_EMOJIS: ['🦊','🐰','🐻','🐹','🐱','🐶','🐧','🐥','🦁','🐸','🐼','🐨','❤️','🩷','🧡','💛','💚','💙','🩵','💜','🤎','🖤','🩶','🤍'],
     DATE_LOCALE: 'ko-KR',
     COLOR_PRIMARY: '#FF7A45',
     COLOR_BG: '#FFF9F2',
@@ -1725,6 +1725,7 @@
             <div id="emoji-picker" class="emoji-picker">
               ${CONFIG.MEMBER_EMOJIS.map((e, i) => `<button type="button" class="emoji-btn${i === ev.members.length % CONFIG.MEMBER_EMOJIS.length ? ' selected' : ''}" data-emoji="${e}">${e}</button>`).join('')}
             </div>
+            <input id="input-member-emoji-custom" class="input" type="text" maxlength="4" placeholder="이모지 직접 입력 (선택)" />
             <button type="button" id="btn-add-member" class="btn btn-primary">멤버 추가</button>
           </div>
         </section>
@@ -1749,11 +1750,12 @@
 
     let selectedEmoji = CONFIG.MEMBER_EMOJIS[ev.members.length % CONFIG.MEMBER_EMOJIS.length];
 
-    document.querySelectorAll('.emoji-btn').forEach(btn => {
+    document.querySelectorAll('#emoji-picker .emoji-btn').forEach(btn => {
       btn.addEventListener('click', () => {
-        document.querySelectorAll('.emoji-btn').forEach(b => b.classList.remove('selected'));
+        document.querySelectorAll('#emoji-picker .emoji-btn').forEach(b => b.classList.remove('selected'));
         btn.classList.add('selected');
         selectedEmoji = btn.dataset.emoji;
+        document.getElementById('input-member-emoji-custom').value = '';
       });
     });
 
@@ -1761,10 +1763,11 @@
       const nameInput = document.getElementById('input-member-name');
       const errorEl = document.getElementById('member-error');
       errorEl.textContent = '';
+      const customEmoji = document.getElementById('input-member-emoji-custom').value.trim();
       try {
         clearTimeout(saveDebounceTimer);
         flushSave(ev);
-        addMember(ev, nameInput.value, selectedEmoji);
+        addMember(ev, nameInput.value, customEmoji || selectedEmoji);
         store.save(ev);
         renderEventSettings(params);
       } catch (err) {
