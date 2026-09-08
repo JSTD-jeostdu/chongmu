@@ -503,6 +503,12 @@
     font-size: 13px;
     color: #8A7A66;
   }
+  .receipt-owner-tag {
+    text-align: center;
+    font-size: 13px;
+    font-weight: 700;
+    margin-bottom: 6px;
+  }
   .receipt-item-row {
     display: flex;
     align-items: baseline;
@@ -2318,6 +2324,7 @@
               : `<div class="receipt-photo-empty">📷 하이라이트 사진 추가</div>`}
           </div>
           <div class="receipt-divider"></div>
+          <div class="receipt-owner-tag">${member.emoji} ${escapeHtml(member.name)}</div>
           <div class="receipt-items">
             ${items.map(item => {
               const amount = result.matrix[item.id][member.id];
@@ -2359,16 +2366,90 @@
     `;
   }
 
+  // 단톡방 공유용 통합 영수증: 개인별 품목 대신 멤버별 낼 금액을, 개인 사진 대신 총무 사진을 재사용
+  function renderReceiptSummaryDom(ev, result) {
+    const owner = ev.members.find(m => m.isOwner);
+    const issuedAt = new Date().toLocaleTimeString(CONFIG.DATE_LOCALE, { hour: '2-digit', minute: '2-digit' });
+    const seed = hashString(ev.id + 'summary');
+    const receiptNo = `${ev.id.slice(0, 8).toUpperCase()}-SUM`;
+
+    const photoDataUrl = owner ? photoStore.get(ev.id, owner.id) : null;
+    const hasAccount = !!(ev.account.bank || ev.account.number || ev.account.holder);
+    const ment = CONFIG.RECEIPT_MENTS[seed % CONFIG.RECEIPT_MENTS.length];
+
+    return `
+      <div class="receipt" id="receipt-capture" data-member-id="summary">
+        <div class="receipt-tear receipt-tear-top"></div>
+        <div class="receipt-body">
+          <div class="receipt-shop">
+            <div class="receipt-shop-name">${escapeHtml(CONFIG.APP_NAME)}</div>
+            <div class="receipt-shop-branch">${escapeHtml(ev.name)}점</div>
+            <div class="receipt-shop-owner">대표: ${owner ? escapeHtml(owner.name) : '-'}</div>
+          </div>
+          <div class="receipt-divider"></div>
+          <div class="receipt-meta">
+            <div>${escapeHtml(ev.date)}</div>
+            <div>발행 ${issuedAt}</div>
+            <div>NO. ${receiptNo}</div>
+          </div>
+          <div class="receipt-divider"></div>
+          <div class="receipt-photo-slot" id="receipt-photo-slot" data-id="${owner ? owner.id : ''}">
+            ${photoDataUrl
+              ? `<img src="${photoDataUrl}" alt="하이라이트 사진" class="receipt-photo-img" />`
+              : `<div class="receipt-photo-empty">📷 하이라이트 사진 추가</div>`}
+          </div>
+          <div class="receipt-divider"></div>
+          <div class="receipt-owner-tag">📋 통합 영수증</div>
+          <div class="receipt-items">
+            ${ev.members.map(m => `
+              <div class="receipt-item-row">
+                <span class="receipt-item-name">${m.emoji} ${escapeHtml(m.name)}${m.isOwner ? ' (총무)' : ''}</span>
+                <span class="receipt-item-leader"></span>
+                <span class="receipt-item-amount">₩${(result.memberTotals[m.id] || 0).toLocaleString(CONFIG.CURRENCY_LOCALE)}</span>
+              </div>
+            `).join('')}
+            <div class="receipt-footnote">* 총무 본인 사용분은 결제 완료된 금액이며, 나머지 멤버는 총무에게 입금해주세요</div>
+          </div>
+          <div class="receipt-divider receipt-divider-bold"></div>
+          <div class="receipt-total">
+            <div class="receipt-total-row"><span>총 사용 금액</span><span>₩${result.grandTotal.toLocaleString(CONFIG.CURRENCY_LOCALE)}</span></div>
+          </div>
+          ${hasAccount ? `
+            <div class="receipt-divider"></div>
+            <div class="receipt-account">
+              <span>${escapeHtml(ev.account.bank)} ${escapeHtml(ev.account.number)} (${escapeHtml(ev.account.holder)})</span>
+              <button type="button" class="btn btn-ghost" id="btn-receipt-copy-account" data-no-capture>복사</button>
+            </div>
+          ` : ''}
+          <div class="receipt-barcode">
+            ${renderBarcodeSvg(seed)}
+            <div class="receipt-barcode-id">${ev.id.slice(0, 12)}</div>
+          </div>
+          <div class="receipt-ment">
+            <div>${escapeHtml(ment)}</div>
+            <div>⁂ ${escapeHtml(CONFIG.APP_SHORT)} ⁂</div>
+          </div>
+        </div>
+        <div class="receipt-tear receipt-tear-bottom"></div>
+      </div>
+    `;
+  }
+
   function renderReceiptView(params) {
     const app = document.getElementById('app');
     const ev = store.get(params.id);
     if (!ev) { location.hash = '#/'; return; }
     if (ev.members.length === 0) { location.hash = `#/event/${ev.id}/result`; return; }
 
-    let member = ev.members.find(m => m.id === params.memberId);
-    if (!member) { member = ev.members[0]; }
+    const isSummary = params.memberId === 'summary';
+    let member = null;
+    if (!isSummary) {
+      member = ev.members.find(m => m.id === params.memberId);
+      if (!member) { member = ev.members[0]; }
+    }
 
     const result = calcSettlement(ev);
+    const owner = ev.members.find(m => m.isOwner);
 
     app.innerHTML = `
       <header class="topbar">
@@ -2378,13 +2459,14 @@
       <main class="screen">
         <div class="receipt-toolbar">
           <div class="receipt-member-tabs" id="receipt-member-tabs">
-            ${ev.members.map(m => `<button type="button" class="receipt-tab${m.id === member.id ? ' active' : ''}" data-id="${m.id}">${m.emoji}</button>`).join('')}
+            ${ev.members.map(m => `<button type="button" class="receipt-tab${!isSummary && m.id === member.id ? ' active' : ''}" data-id="${m.id}">${m.emoji}</button>`).join('')}
+            <button type="button" class="receipt-tab${isSummary ? ' active' : ''}" data-id="summary" title="통합 영수증">📋</button>
           </div>
           <button type="button" id="btn-photo-manager" class="btn btn-ghost" title="사진 관리">🖼</button>
           <button type="button" id="btn-save-all" class="btn btn-ghost" title="전체 저장">⬇전체</button>
         </div>
         <div class="receipt-stage">
-          ${renderReceiptDom(ev, member, result)}
+          ${isSummary ? renderReceiptSummaryDom(ev, result) : renderReceiptDom(ev, member, result)}
         </div>
         <div class="receipt-actions">
           <button type="button" id="btn-save-receipt" class="btn btn-primary">이미지 저장</button>
@@ -2401,12 +2483,15 @@
 
     const photoSlot = document.getElementById('receipt-photo-slot');
     if (photoSlot) {
-      photoSlot.addEventListener('click', () => { openPhotoAttachModal(ev.id, member.id); });
+      const photoMemberId = isSummary ? (owner ? owner.id : null) : member.id;
+      if (photoMemberId) {
+        photoSlot.addEventListener('click', () => { openPhotoAttachModal(ev.id, photoMemberId); });
+      }
     }
     document.getElementById('btn-photo-manager').addEventListener('click', () => { openPhotoManagerSheet(ev.id); });
     document.getElementById('btn-save-all').addEventListener('click', () => { saveAllReceipts(ev); });
-    document.getElementById('btn-save-receipt').addEventListener('click', () => { saveReceiptImage(ev, member); });
-    document.getElementById('btn-share-receipt').addEventListener('click', () => { shareReceiptImage(ev, member); });
+    document.getElementById('btn-save-receipt').addEventListener('click', () => { saveReceiptImage(ev, isSummary ? null : member); });
+    document.getElementById('btn-share-receipt').addEventListener('click', () => { shareReceiptImage(ev, isSummary ? null : member); });
     const copyBtn = document.getElementById('btn-receipt-copy-account');
     if (copyBtn) {
       copyBtn.addEventListener('click', () => {
@@ -2735,9 +2820,10 @@
   async function saveReceiptImage(ev, member) {
     const receiptEl = document.getElementById('receipt-capture');
     if (!receiptEl) return;
+    const label = member ? member.name : '통합';
     try {
       const blob = await captureReceiptToBlob(receiptEl);
-      downloadBlob(blob, `오내총_${ev.name}_${member.name}.png`);
+      downloadBlob(blob, `오내총_${ev.name}_${label}.png`);
       showToast('영수증 이미지를 저장했어요');
     } catch (err) {
       console.warn('saveReceiptImage 실패:', err);
@@ -2748,18 +2834,19 @@
   async function shareReceiptImage(ev, member) {
     const receiptEl = document.getElementById('receipt-capture');
     if (!receiptEl) return;
+    const label = member ? member.name : '통합';
     try {
       const blob = await captureReceiptToBlob(receiptEl);
-      const file = new File([blob], `오내총_${ev.name}_${member.name}.png`, { type: 'image/png' });
+      const file = new File([blob], `오내총_${ev.name}_${label}.png`, { type: 'image/png' });
       if (navigator.canShare && navigator.canShare({ files: [file] })) {
         try {
-          await navigator.share({ files: [file], title: `${ev.name} 영수증` });
+          await navigator.share({ files: [file], title: `${ev.name} ${label} 영수증` });
           return;
         } catch (err) {
           if (err.name === 'AbortError') return; // 사용자가 공유를 취소함
         }
       }
-      downloadBlob(blob, `오내총_${ev.name}_${member.name}.png`);
+      downloadBlob(blob, `오내총_${ev.name}_${label}.png`);
       showToast('갤러리에서 공유해주세요');
     } catch (err) {
       console.warn('shareReceiptImage 실패:', err);
